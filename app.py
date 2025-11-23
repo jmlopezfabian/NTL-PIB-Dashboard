@@ -209,7 +209,7 @@ def get_municipios():
         municipios = [str(m) for m in municipios if m]  # Convertir a string y filtrar vacíos
         municipios.sort()
         
-        return jsonify({
+    return jsonify({
             'success': True,
             'municipios': municipios
         })
@@ -275,8 +275,8 @@ def get_municipio_data(municipio):
         municipio_data = municipio_data.fillna('')
         
         data = municipio_data.to_dict('records')
-        
-        return jsonify({
+    
+    return jsonify({
             'success': True,
             'data': data,
             'municipio': municipio_decoded
@@ -497,6 +497,86 @@ def health_check():
         'status': 'healthy',
         'service': 'Blob Storage API'
     })
+
+@app.route('/api/info', methods=['GET'])
+def info():
+    """Endpoint de información del sistema (compatibilidad con frontend antiguo)"""
+    return jsonify({
+        'message': '¡Hola desde Railway!',
+        'environment': os.getenv('RAILWAY_ENVIRONMENT', os.getenv('FLASK_ENV', 'local')),
+        'python_version': os.sys.version.split()[0]
+    })
+
+@app.route('/api/chart-data', methods=['GET'])
+def chart_data():
+    """Endpoint para datos de gráfica (compatibilidad con frontend antiguo)"""
+    try:
+        # Intentar obtener datos reales del blob storage
+        df = get_blob_data()
+        
+        # Si hay datos de fecha, usar los últimos 7 registros
+        if 'Fecha' in df.columns and len(df) > 0:
+            df_sorted = df.sort_values('Fecha') if pd.api.types.is_datetime64_any_dtype(df['Fecha']) else df
+            df_sample = df_sorted.tail(7)
+            
+            # Usar fecha como labels si es posible
+            if pd.api.types.is_datetime64_any_dtype(df_sample['Fecha']):
+                labels = df_sample['Fecha'].dt.strftime('%Y-%m-%d').tolist()
+            else:
+                labels = df_sample['Fecha'].astype(str).tolist()
+            
+            # Usar Media_de_radianza si existe, sino usar el primer valor numérico
+            if 'Media_de_radianza' in df_sample.columns:
+                data = df_sample['Media_de_radianza'].fillna(0).tolist()
+            else:
+                # Buscar primera columna numérica
+                numeric_cols = df_sample.select_dtypes(include=['number']).columns
+                if len(numeric_cols) > 0:
+                    data = df_sample[numeric_cols[0]].fillna(0).tolist()
+                else:
+                    data = [0] * len(labels)
+        else:
+            # Fallback: datos de ejemplo
+            import random
+            labels = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
+            data = [random.randint(10, 100) for _ in range(7)]
+        
+        # Determinar el label correcto
+        label = 'Radianza Media'
+        try:
+            if 'Media_de_radianza' in df.columns:
+                label = 'Radianza Media'
+            else:
+                label = 'Visitas'
+        except:
+            label = 'Visitas'
+        
+        return jsonify({
+            'labels': labels,
+            'datasets': [{
+                'label': label,
+                'data': data,
+                'backgroundColor': 'rgba(102, 126, 234, 0.5)',
+                'borderColor': 'rgba(102, 126, 234, 1)',
+                'borderWidth': 2
+            }]
+        })
+    except Exception as e:
+        # Si falla, devolver datos de ejemplo
+        import random
+        labels = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
+        data = [random.randint(10, 100) for _ in range(7)]
+        
+        return jsonify({
+            'labels': labels,
+            'datasets': [{
+                'label': 'Visitas',
+                'data': data,
+                'backgroundColor': 'rgba(102, 126, 234, 0.5)',
+                'borderColor': 'rgba(102, 126, 234, 1)',
+                'borderWidth': 2
+            }]
+        })
 
 @app.route('/api/debug', methods=['GET'])
 def debug_info():
