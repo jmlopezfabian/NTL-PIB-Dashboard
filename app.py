@@ -209,7 +209,7 @@ def get_municipios():
         municipios = [str(m) for m in municipios if m]  # Convertir a string y filtrar vacíos
         municipios.sort()
         
-    return jsonify({
+        return jsonify({
             'success': True,
             'municipios': municipios
         })
@@ -564,19 +564,19 @@ def chart_data():
     except Exception as e:
         # Si falla, devolver datos de ejemplo
         import random
-        labels = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
-        data = [random.randint(10, 100) for _ in range(7)]
-        
-        return jsonify({
-            'labels': labels,
-            'datasets': [{
-                'label': 'Visitas',
-                'data': data,
-                'backgroundColor': 'rgba(102, 126, 234, 0.5)',
-                'borderColor': 'rgba(102, 126, 234, 1)',
-                'borderWidth': 2
-            }]
-        })
+    labels = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
+    data = [random.randint(10, 100) for _ in range(7)]
+    
+    return jsonify({
+        'labels': labels,
+        'datasets': [{
+            'label': 'Visitas',
+            'data': data,
+            'backgroundColor': 'rgba(102, 126, 234, 0.5)',
+            'borderColor': 'rgba(102, 126, 234, 1)',
+            'borderWidth': 2
+        }]
+    })
 
 @app.route('/api/debug', methods=['GET'])
 def debug_info():
@@ -591,7 +591,7 @@ def debug_info():
             'dtypes': {col: str(dtype) for col, dtype in df.dtypes.items()},
             'sample_data': df.head(3).to_dict('records') if len(df) > 0 else [],
             'null_counts': df.isnull().sum().to_dict(),
-            'static_folder': app.static_folder,
+        'static_folder': app.static_folder,
             'static_folder_exists': os.path.exists(app.static_folder) if app.static_folder else False
         }
         
@@ -660,7 +660,7 @@ def serve(path):
     if os.path.exists(app.static_folder):
         index_path = os.path.join(app.static_folder, 'index.html')
         if os.path.exists(index_path):
-            return send_from_directory(app.static_folder, 'index.html')
+    return send_from_directory(app.static_folder, 'index.html')
     
     return jsonify({'error': 'Not found'}), 404
 
