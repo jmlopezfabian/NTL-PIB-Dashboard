@@ -10,6 +10,7 @@ from config import (
     STORAGE_ACCOUNT_KEY, 
     CONTAINER_NAME, 
     BLOB_NAME,
+    BLOB_NAME_PIB,
     CONNECTION_STRING,
     CORS_ORIGINS,
     CACHE_TTL_SECONDS,
@@ -40,10 +41,14 @@ if CORS_ORIGINS == ['*']:
 else:
     CORS(app, origins=CORS_ORIGINS)  # Solo permite orígenes específicos (producción)
 
-# Cache simple en memoria
+# Cache simple en memoria para radianza
 _CACHE_TTL_SECONDS = CACHE_TTL_SECONDS
 _CACHED_DF = None
 _CACHED_AT = 0.0
+
+# Cache para PIB
+_CACHED_PIB_DF = None
+_CACHED_PIB_AT = 0.0
 
 def get_blob_data():
     """Obtiene los datos del blob storage y los convierte a DataFrame"""
@@ -88,6 +93,58 @@ def get_blob_data():
     except Exception as e:
         import traceback
         error_msg = f"Error al obtener datos del blob: {str(e)}\n{traceback.format_exc()}"
+        print(error_msg)
+        raise Exception(error_msg)
+
+def get_pib_data():
+    """Obtiene los datos de PIB del blob storage y los convierte a DataFrame"""
+    try:
+        # Validar que las credenciales estén configuradas
+        if not STORAGE_ACCOUNT_KEY:
+            raise ValueError(
+                "STORAGE_ACCOUNT_KEY no está configurada. "
+                "Por favor, configúrala como variable de entorno."
+            )
+        
+        global _CACHED_PIB_DF, _CACHED_PIB_AT
+        now = time.time()
+        if _CACHED_PIB_DF is not None and (now - _CACHED_PIB_AT) < _CACHE_TTL_SECONDS:
+            return _CACHED_PIB_DF
+
+        blob_service_client = BlobServiceClient.from_connection_string(CONNECTION_STRING)
+        print(f"Blob name PIB: {BLOB_NAME_PIB}")
+        blob_client = blob_service_client.get_blob_client(container=CONTAINER_NAME, blob=BLOB_NAME_PIB)
+        
+        stream = blob_client.download_blob()
+        data = stream.readall().decode('utf-8')
+        
+        df = pd.read_csv(StringIO(data))
+        
+        # Asegurar que las columnas de fecha se manejen correctamente
+        if 'fecha' in df.columns:
+            try:
+                df['fecha'] = pd.to_datetime(df['fecha'])
+            except Exception:
+                pass
+
+        # Normalización ligera
+        if 'municipio' in df.columns:
+            df['municipio'] = df['municipio'].astype(str)
+        if 'entidad_federativa' in df.columns:
+            df['entidad_federativa'] = df['entidad_federativa'].astype(str)
+        
+        # Convertir columnas numéricas (pueden tener comas como separador decimal)
+        numeric_cols = ['porc_pob', 'pibe', 'pib_mun']
+        for col in numeric_cols:
+            if col in df.columns:
+                df[col] = df[col].astype(str).str.replace(',', '.').astype(float, errors='ignore')
+        
+        _CACHED_PIB_DF = df
+        _CACHED_PIB_AT = now
+        return _CACHED_PIB_DF
+    except Exception as e:
+        import traceback
+        error_msg = f"Error al obtener datos de PIB del blob: {str(e)}\n{traceback.format_exc()}"
         print(error_msg)
         raise Exception(error_msg)
 
@@ -483,6 +540,266 @@ def download_data():
     except Exception as e:
         import traceback
         error_msg = f"Error en download_data: {str(e)}\n{traceback.format_exc()}"
+        print(error_msg)
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'traceback': traceback.format_exc() if app.debug else None
+        }), 500
+
+# ==================== ENDPOINTS PARA PIB ====================
+
+@app.route('/api/pib/data', methods=['GET'])
+def get_pib_data_endpoint():
+    """Endpoint para obtener datos de PIB"""
+    try:
+        df = get_pib_data().copy()
+
+        # Parámetros de query
+        limit = request.args.get('limit', type=int)
+        columns = request.args.get('columns')
+        municipio = request.args.get('municipio')
+        entidad = request.args.get('entidad')
+        from_date = request.args.get('from')
+        to_date = request.args.get('to')
+        year = request.args.get('year', type=int)
+
+        # Filtros
+        if municipio and 'municipio' in df.columns:
+            df = df[df['municipio'].str.lower() == municipio.lower()]
+        if entidad and 'entidad_federativa' in df.columns:
+            df = df[df['entidad_federativa'].str.lower() == entidad.lower()]
+        if from_date and 'fecha' in df.columns and pd.api.types.is_datetime64_any_dtype(df['fecha']):
+            df = df[df['fecha'] >= pd.to_datetime(from_date)]
+        if to_date and 'fecha' in df.columns and pd.api.types.is_datetime64_any_dtype(df['fecha']):
+            df = df[df['fecha'] <= pd.to_datetime(to_date)]
+        if year and 'fecha' in df.columns:
+            if not pd.api.types.is_datetime64_any_dtype(df['fecha']):
+                df['fecha'] = pd.to_datetime(df['fecha'], errors='coerce')
+            df = df[df['fecha'].dt.year == year]
+        
+        # Orden por fecha si existe
+        if 'fecha' in df.columns and pd.api.types.is_datetime64_any_dtype(df['fecha']):
+            df = df.sort_values('fecha')
+
+        # Selección de columnas
+        if columns:
+            cols = [c.strip() for c in columns.split(',') if c.strip() in df.columns]
+            if cols:
+                df = df[cols]
+
+        # Límite
+        if limit is not None and limit > 0:
+            df = df.head(limit)
+        
+        # Convertir DataFrame a formato JSON
+        df = df.replace([float('inf'), float('-inf')], None)
+        df = df.fillna('')
+        
+        # Convertir fechas a string para JSON
+        if 'fecha' in df.columns and pd.api.types.is_datetime64_any_dtype(df['fecha']):
+            df['fecha'] = df['fecha'].dt.strftime('%Y-%m-%d')
+        
+        data = df.to_dict('records')
+        
+        return jsonify({
+            'success': True,
+            'data': data,
+            'total_records': len(data)
+        })
+    except Exception as e:
+        import traceback
+        error_msg = f"Error en get_pib_data: {str(e)}\n{traceback.format_exc()}"
+        print(error_msg)
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'traceback': traceback.format_exc() if app.debug else None
+        }), 500
+
+@app.route('/api/pib/municipios', methods=['GET'])
+def get_pib_municipios():
+    """Endpoint para obtener lista de municipios únicos de PIB"""
+    try:
+        df = get_pib_data()
+        
+        if 'municipio' not in df.columns:
+            return jsonify({
+                'success': False,
+                'error': 'La columna "municipio" no existe en el CSV'
+            }), 500
+        
+        municipios = df['municipio'].dropna().astype(str).unique().tolist()
+        municipios = [str(m) for m in municipios if m]
+        municipios.sort()
+        
+        return jsonify({
+            'success': True,
+            'municipios': municipios
+        })
+    except Exception as e:
+        import traceback
+        error_msg = f"Error en get_pib_municipios: {str(e)}\n{traceback.format_exc()}"
+        print(error_msg)
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'traceback': traceback.format_exc() if app.debug else None
+        }), 500
+
+@app.route('/api/pib/entidades', methods=['GET'])
+def get_pib_entidades():
+    """Endpoint para obtener lista de entidades federativas únicas"""
+    try:
+        df = get_pib_data()
+        
+        if 'entidad_federativa' not in df.columns:
+            return jsonify({
+                'success': False,
+                'error': 'La columna "entidad_federativa" no existe en el CSV'
+            }), 500
+        
+        entidades = df['entidad_federativa'].dropna().astype(str).unique().tolist()
+        entidades = [str(e) for e in entidades if e]
+        entidades.sort()
+        
+        return jsonify({
+            'success': True,
+            'entidades': entidades
+        })
+    except Exception as e:
+        import traceback
+        error_msg = f"Error en get_pib_entidades: {str(e)}\n{traceback.format_exc()}"
+        print(error_msg)
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'traceback': traceback.format_exc() if app.debug else None
+        }), 500
+
+@app.route('/api/pib/years', methods=['GET'])
+def get_pib_years():
+    """Endpoint para obtener lista de años únicos disponibles en PIB"""
+    try:
+        df = get_pib_data()
+        
+        if 'fecha' not in df.columns:
+            return jsonify({
+                'success': False,
+                'error': 'La columna "fecha" no existe en el CSV'
+            }), 500
+        
+        if not pd.api.types.is_datetime64_any_dtype(df['fecha']):
+            df['fecha'] = pd.to_datetime(df['fecha'], errors='coerce')
+        
+        df = df.dropna(subset=['fecha'])
+        years = df['fecha'].dt.year.unique().tolist()
+        years = [int(y) for y in years if not pd.isna(y)]
+        years.sort(reverse=True)
+        
+        return jsonify({
+            'success': True,
+            'years': years
+        })
+    except Exception as e:
+        import traceback
+        error_msg = f"Error en get_pib_years: {str(e)}\n{traceback.format_exc()}"
+        print(error_msg)
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'traceback': traceback.format_exc() if app.debug else None
+        }), 500
+
+@app.route('/api/pib/municipio/<municipio>', methods=['GET'])
+def get_pib_municipio_data(municipio):
+    """Endpoint para obtener datos de PIB de un municipio específico"""
+    try:
+        df = get_pib_data().copy()
+        
+        if 'municipio' not in df.columns:
+            return jsonify({
+                'success': False,
+                'error': 'La columna "municipio" no existe en el CSV'
+            }), 500
+        
+        municipio_decoded = municipio.replace('%20', ' ').replace('+', ' ')
+        municipio_data = df[df['municipio'].str.lower() == municipio_decoded.lower()]
+
+        limit = request.args.get('limit', default=None, type=int)
+        from_date = request.args.get('from')
+        to_date = request.args.get('to')
+        year = request.args.get('year', type=int)
+        
+        if 'fecha' in municipio_data.columns:
+            if not pd.api.types.is_datetime64_any_dtype(municipio_data['fecha']):
+                municipio_data['fecha'] = pd.to_datetime(municipio_data['fecha'], errors='coerce')
+            municipio_data = municipio_data.sort_values('fecha')
+            if from_date:
+                municipio_data = municipio_data[municipio_data['fecha'] >= pd.to_datetime(from_date)]
+            if to_date:
+                municipio_data = municipio_data[municipio_data['fecha'] <= pd.to_datetime(to_date)]
+            if year:
+                municipio_data = municipio_data[municipio_data['fecha'].dt.year == year]
+        
+        if limit and limit > 0:
+            municipio_data = municipio_data.tail(limit)
+        
+        if municipio_data.empty:
+            return jsonify({
+                'success': False,
+                'error': f'Municipio {municipio_decoded} no encontrado'
+            }), 404
+        
+        if 'fecha' in municipio_data.columns and pd.api.types.is_datetime64_any_dtype(municipio_data['fecha']):
+            municipio_data['fecha'] = municipio_data['fecha'].dt.strftime('%Y-%m-%d')
+        
+        municipio_data = municipio_data.replace([float('inf'), float('-inf')], None)
+        municipio_data = municipio_data.fillna('')
+        
+        data = municipio_data.to_dict('records')
+        
+        return jsonify({
+            'success': True,
+            'data': data,
+            'municipio': municipio_decoded
+        })
+    except Exception as e:
+        import traceback
+        error_msg = f"Error en get_pib_municipio_data: {str(e)}\n{traceback.format_exc()}"
+        print(error_msg)
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'traceback': traceback.format_exc() if app.debug else None
+        }), 500
+
+@app.route('/api/pib/stats', methods=['GET'])
+def get_pib_stats():
+    """Endpoint para obtener estadísticas de PIB"""
+    try:
+        df = get_pib_data().copy()
+        
+        # Estadísticas generales
+        general_stats = {
+            'total_records': len(df),
+            'total_municipios': df['municipio'].nunique() if 'municipio' in df.columns else 0,
+            'total_entidades': df['entidad_federativa'].nunique() if 'entidad_federativa' in df.columns else 0,
+            'fecha_min': str(df['fecha'].min()) if 'fecha' in df.columns else 'N/A',
+            'fecha_max': str(df['fecha'].max()) if 'fecha' in df.columns else 'N/A',
+            'pib_mun_promedio': float(df['pib_mun'].mean()) if 'pib_mun' in df.columns else 0.0,
+            'pib_mun_maximo': float(df['pib_mun'].max()) if 'pib_mun' in df.columns else 0.0,
+            'pib_mun_minimo': float(df['pib_mun'].min()) if 'pib_mun' in df.columns else 0.0,
+            'pibe_promedio': float(df['pibe'].mean()) if 'pibe' in df.columns else 0.0
+        }
+        
+        return jsonify({
+            'success': True,
+            'general': general_stats
+        })
+    except Exception as e:
+        import traceback
+        error_msg = f"Error en get_pib_stats: {str(e)}\n{traceback.format_exc()}"
         print(error_msg)
         return jsonify({
             'success': False,

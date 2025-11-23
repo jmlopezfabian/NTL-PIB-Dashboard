@@ -46,7 +46,10 @@ const RadianzaChart = ({
       'Percentil_25_de_radianza': 'Percentil 25',
       'Percentil_50_de_radianza': 'Percentil 50 (Mediana)',
       'Percentil_75_de_radianza': 'Percentil 75',
-      'Cantidad_de_pixeles': 'Cantidad de Píxeles'
+      'Cantidad_de_pixeles': 'Cantidad de Píxeles',
+      'pib_mun': 'PIB Municipal',
+      'pibe': 'PIB Estatal',
+      'porc_pob': 'Porcentaje de Población'
     };
     return labels[key] || key;
   };

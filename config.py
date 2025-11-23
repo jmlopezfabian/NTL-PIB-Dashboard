@@ -11,8 +11,9 @@ load_dotenv()
 # Configuración de Azure Blob Storage
 STORAGE_ACCOUNT_NAME = os.getenv('STORAGE_ACCOUNT_NAME', 'trabajoterminal')
 STORAGE_ACCOUNT_KEY = os.getenv('STORAGE_ACCOUNT_KEY', '')
-CONTAINER_NAME = os.getenv('CONTAINER_NAME', 'radianza')
-BLOB_NAME = os.getenv('BLOB_NAME', 'municipios_completos_limpio.csv')
+CONTAINER_NAME = os.getenv('CONTAINER_NAME', '')
+BLOB_NAME = os.getenv('BLOB_NAME', '')
+BLOB_NAME_PIB = os.getenv('BLOB_NAME_PIB', '')
 
 # Configuración de Flask
 FLASK_ENV = os.getenv('FLASK_ENV', 'development')
