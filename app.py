@@ -1,5 +1,7 @@
 from flask import Flask, render_template, jsonify
 import os
+import random
+from datetime import datetime
 
 app = Flask(__name__)
 
@@ -18,6 +20,24 @@ def info():
 @app.route('/api/health')
 def health():
     return jsonify({'status': 'healthy'}), 200
+
+@app.route('/api/chart-data')
+def chart_data():
+    # Genera datos de ejemplo para la gráfica
+    # En una app real, estos datos vendrían de una base de datos
+    labels = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
+    data = [random.randint(10, 100) for _ in range(7)]
+    
+    return jsonify({
+        'labels': labels,
+        'datasets': [{
+            'label': 'Visitas',
+            'data': data,
+            'backgroundColor': 'rgba(102, 126, 234, 0.5)',
+            'borderColor': 'rgba(102, 126, 234, 1)',
+            'borderWidth': 2
+        }]
+    })
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))

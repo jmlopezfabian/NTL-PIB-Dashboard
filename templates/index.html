@@ -100,7 +100,23 @@
             color: #666;
             font-style: italic;
         }
+
+        .chart-container {
+            margin: 20px 0;
+            padding: 20px;
+            background: white;
+            border-radius: 10px;
+        }
+
+        canvas {
+            max-height: 400px;
+        }
+
+        .container {
+            max-width: 800px;
+        }
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
     <div class="container">
@@ -121,8 +137,16 @@
             </div>
         </div>
 
+        <div class="info-box">
+            <h3>📊 Gráfica de Datos</h3>
+            <div class="chart-container">
+                <canvas id="myChart"></canvas>
+            </div>
+        </div>
+
         <button class="btn" onclick="loadInfo()">🔄 Actualizar Info</button>
         <button class="btn" onclick="checkHealth()">❤️ Verificar Salud</button>
+        <button class="btn" onclick="loadChart()">📊 Actualizar Gráfica</button>
     </div>
 
     <script>
@@ -162,10 +186,62 @@
             }
         }
 
+        // Configuración de la gráfica
+        let myChart = null;
+
+        async function loadChart() {
+            try {
+                const response = await fetch('/api/chart-data');
+                const chartData = await response.json();
+                
+                const ctx = document.getElementById('myChart').getContext('2d');
+                
+                // Destruir gráfica anterior si existe
+                if (myChart) {
+                    myChart.destroy();
+                }
+                
+                // Crear nueva gráfica
+                myChart = new Chart(ctx, {
+                    type: 'line',
+                    data: chartData,
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: {
+                            title: {
+                                display: true,
+                                text: 'Visitas Semanales',
+                                font: {
+                                    size: 16
+                                }
+                            },
+                            legend: {
+                                display: true,
+                                position: 'top'
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                ticks: {
+                                    stepSize: 10
+                                }
+                            }
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error('Error al cargar la gráfica:', error);
+                alert('Error al cargar la gráfica');
+            }
+        }
+
         // Cargar información al iniciar
         window.addEventListener('DOMContentLoaded', () => {
             loadInfo();
             checkHealth();
+            loadChart();
         });
     </script>
 </body>

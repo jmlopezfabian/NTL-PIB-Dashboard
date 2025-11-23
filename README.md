@@ -6,6 +6,7 @@ Una aplicación web sencilla creada con Flask para practicar despliegue en Railw
 
 - Interfaz web moderna y responsive
 - API REST con endpoints de información y salud
+- Gráfica interactiva con Chart.js
 - Lista para despliegue en Railway
 - Diseño atractivo con gradientes
 
@@ -14,27 +15,56 @@ Una aplicación web sencilla creada con Flask para practicar despliegue en Railw
 - Python 3.8+
 - pip
 
-## 🛠️ Instalación Local
+## 🛠️ Instalación y Ejecución Local
 
-1. Clona o descarga este repositorio
+### Opción 1: Script Automático (Recomendado)
 
-2. Crea un entorno virtual:
 ```bash
-python -m venv venv
-source venv/bin/activate  # En Windows: venv\Scripts\activate
+./run.sh
 ```
 
-3. Instala las dependencias:
+Este script automáticamente:
+- Crea el entorno virtual si no existe
+- Instala las dependencias
+- Ejecuta la aplicación
+
+### Opción 2: Manual Paso a Paso
+
+1. **Crea un entorno virtual:**
+```bash
+python3 -m venv venv
+```
+
+2. **Activa el entorno virtual:**
+```bash
+# En Linux/Mac:
+source venv/bin/activate
+
+# En Windows:
+venv\Scripts\activate
+```
+
+3. **Instala las dependencias:**
 ```bash
 pip install -r requirements.txt
 ```
 
-4. Ejecuta la aplicación:
+4. **Ejecuta la aplicación:**
 ```bash
 python app.py
 ```
 
-5. Abre tu navegador en `http://localhost:5000`
+5. **Abre tu navegador:**
+   - Ve a: `http://localhost:5000`
+   - Deberías ver la interfaz con la gráfica y los botones
+
+### Comandos Rápidos
+
+Si ya tienes el entorno virtual configurado:
+```bash
+source venv/bin/activate  # Solo si no está activo
+python app.py
+```
 
 ## 🚂 Despliegue en Railway
 
@@ -78,16 +108,18 @@ railway up
 ├── requirements.txt    # Dependencias Python
 ├── Procfile           # Configuración para Railway
 ├── railway.json       # Configuración avanzada de Railway
+├── run.sh             # Script para ejecutar localmente
 ├── templates/         # Plantillas HTML
-│   └── index.html     # Página principal
+│   └── index.html     # Página principal con gráfica
 └── README.md          # Este archivo
 ```
 
 ## 🔌 Endpoints de la API
 
-- `GET /` - Página principal
-- `GET /api/info` - Información del sistema
-- `GET /api/health` - Estado de salud del servidor
+- `GET /` - Página principal con interfaz web
+- `GET /api/info` - Información del sistema (JSON)
+- `GET /api/health` - Estado de salud del servidor (JSON)
+- `GET /api/chart-data` - Datos para la gráfica (JSON)
 
 ## 📝 Notas
 
