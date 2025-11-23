@@ -38,3 +38,11 @@ wheels/
 .DS_Store
 Thumbs.db
 
+# Node/React
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/.env.local
+frontend/.env
+*.log
+

@@ -1,13 +1,11 @@
-from flask import Flask, render_template, jsonify
+from flask import Flask, jsonify
+from flask_cors import CORS
 import os
 import random
 from datetime import datetime
 
 app = Flask(__name__)
-
-@app.route('/')
-def index():
-    return render_template('index.html')
+CORS(app)  # Permitir peticiones desde el frontend React
 
 @app.route('/api/info')
 def info():

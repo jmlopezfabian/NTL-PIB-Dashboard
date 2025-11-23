@@ -1,0 +1,22 @@
+{
+  "name": "flask-react-app",
+  "version": "1.0.0",
+  "description": "Full-stack app with Flask backend and React frontend",
+  "scripts": {
+    "install-all": "cd frontend && npm install && cd .. && pip install -r requirements.txt",
+    "dev": "concurrently \"npm run backend\" \"npm run frontend\"",
+    "backend": "source venv/bin/activate && python app.py",
+    "frontend": "cd frontend && npm run dev",
+    "build": "cd frontend && npm run build"
+  },
+  "keywords": [
+    "flask",
+    "react",
+    "railway"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
