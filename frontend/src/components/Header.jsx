@@ -10,7 +10,7 @@ const Header = ({ currentPage, onPageChange }) => {
             <h1>{currentPage === 'pib' ? 'Dashboard de PIB' : 'Dashboard de Radianza'}</h1>
             <p>
               {currentPage === 'pib' 
-                ? 'Visualización de datos de Producto Interno Bruto por municipio'
+                ? 'Visualización de PIB para municipios de la CDMX, más datos de Monterrey y Oaxaca de Juárez'
                 : 'Visualización de datos de radianza para municipios de la CDMX, más datos de Monterrey y Oaxaca de Juárez'
               }
             </p>

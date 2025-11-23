@@ -3,32 +3,22 @@ import axios from 'axios';
 import './Dashboard.css';
 import MultiMunicipioSelector from './MultiMunicipioSelector';
 import DateRangeSlider from './DateRangeSlider';
-import YearSelector from './YearSelector';
 import RadianzaChart from './RadianzaChart';
-import ComparacionMunicipios from './ComparacionMunicipios';
 
 // Usar /api en producción o variable de entorno (adaptado para Vite)
 const API_BASE_URL = import.meta.env.VITE_API_URL || 
   (import.meta.env.PROD ? '/api' : 'http://localhost:5000/api');
 
-const PIB_METRICAS = [
-  { value: 'pib_mun', label: 'PIB Municipal' },
-  { value: 'pibe', label: 'PIB Estatal' },
-  { value: 'porc_pob', label: 'Porcentaje de Población' }
-];
+// Métrica fija: solo PIB Municipal
+const SELECTED_METRICA = 'pib_mun';
 
 const PIBDashboard = () => {
   const [municipios, setMunicipios] = useState([]);
-  const [entidades, setEntidades] = useState([]);
   const [selectedMunicipios, setSelectedMunicipios] = useState([]);
-  const [selectedEntidad, setSelectedEntidad] = useState(null);
-  const [selectedMetrica, setSelectedMetrica] = useState('pib_mun');
   const [municipioData, setMunicipioData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [dateRange, setDateRange] = useState(null);
-  const [years, setYears] = useState([]);
-  const [selectedYear, setSelectedYear] = useState(null);
   const [showMarkers, setShowMarkers] = useState(true);
 
   useEffect(() => {
@@ -37,9 +27,9 @@ const PIBDashboard = () => {
 
   useEffect(() => {
     if (selectedMunicipios.length > 0) {
-      loadMultipleMunicipioData(selectedMunicipios, selectedYear);
+      loadMultipleMunicipioData(selectedMunicipios);
     }
-  }, [selectedMunicipios, selectedYear]);
+  }, [selectedMunicipios]);
 
   const loadInitialData = async () => {
     try {
@@ -54,11 +44,7 @@ const PIBDashboard = () => {
         return;
       }
 
-      const [municipiosRes, entidadesRes, yearsRes] = await Promise.all([
-        axios.get(`${API_BASE_URL}/pib/municipios`),
-        axios.get(`${API_BASE_URL}/pib/entidades`),
-        axios.get(`${API_BASE_URL}/pib/years`)
-      ]);
+      const municipiosRes = await axios.get(`${API_BASE_URL}/pib/municipios`);
 
       if (municipiosRes.data.success) {
         setMunicipios(municipiosRes.data.municipios);
@@ -70,17 +56,6 @@ const PIBDashboard = () => {
         setError(`Error al cargar municipios: ${municipiosRes.data.error}`);
       }
 
-      if (entidadesRes.data.success) {
-        setEntidades(entidadesRes.data.entidades);
-      }
-
-      if (yearsRes.data.success) {
-        setYears(yearsRes.data.years);
-        if (yearsRes.data.years.length > 0) {
-          setSelectedYear(yearsRes.data.years[0]);
-        }
-      }
-
     } catch (err) {
       const errorMessage = err.response?.data?.error || err.message || 'Error desconocido';
       setError(`Error al cargar los datos: ${errorMessage}`);
@@ -90,14 +65,11 @@ const PIBDashboard = () => {
     }
   };
 
-  const loadMultipleMunicipioData = async (municipiosList, year = null) => {
+  const loadMultipleMunicipioData = async (municipiosList) => {
     try {
+      // Cargar todos los años (sin filtro)
       const promises = municipiosList.map(municipio => {
-        const params = {};
-        if (year) {
-          params.year = year;
-        }
-        return axios.get(`${API_BASE_URL}/pib/municipio/${encodeURIComponent(municipio)}`, { params });
+        return axios.get(`${API_BASE_URL}/pib/municipio/${encodeURIComponent(municipio)}`);
       });
       
       const responses = await Promise.all(promises);
@@ -107,7 +79,7 @@ const PIBDashboard = () => {
           ...item,
           Fecha: item.fecha, // Normalizar nombre de columna para el gráfico
           Municipio: item.municipio,
-          [selectedMetrica]: item[selectedMetrica] // Asegurar que la métrica esté disponible
+          [SELECTED_METRICA]: item[SELECTED_METRICA] // Asegurar que la métrica esté disponible
         })));
       
       setMunicipioData(allData);
@@ -165,27 +137,6 @@ const PIBDashboard = () => {
             selectedMunicipios={selectedMunicipios}
             onSelectMunicipios={setSelectedMunicipios}
           />
-          <div className="metrica-selector" style={{background: '#ffffff', border: '1px solid rgba(0,0,0,0.1)'}}>
-            <label htmlFor="pib-metrica-select">Métrica:</label>
-            <select
-              id="pib-metrica-select"
-              value={selectedMetrica}
-              onChange={(e) => setSelectedMetrica(e.target.value)}
-              className="select-input"
-              style={{background: '#fafafa', color: '#2a2a2a', border: '2px solid rgba(0,0,0,0.1)'}}
-            >
-              {PIB_METRICAS.map((metrica) => (
-                <option key={metrica.value} value={metrica.value}>
-                  {metrica.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <YearSelector
-            years={years}
-            selectedYear={selectedYear}
-            onSelectYear={setSelectedYear}
-          />
         </div>
         {municipioData.length > 0 && (
           <div className="date-range-control">
@@ -208,7 +159,7 @@ const PIBDashboard = () => {
 
       <div className="charts-grid">
         <div className="chart-card">
-          <h2>{PIB_METRICAS.find(m => m.value === selectedMetrica)?.label || selectedMetrica}</h2>
+          <h2>PIB Municipal</h2>
           {multipleMunicipios && (
             <p className="chart-subtitle">
               Municipios: {selectedMunicipios.join(', ')}
@@ -218,9 +169,9 @@ const PIBDashboard = () => {
             data={filteredMunicipioData.map(item => ({
               Fecha: item.fecha || item.Fecha,
               Municipio: item.municipio || item.Municipio,
-              [selectedMetrica]: item[selectedMetrica]
+              [SELECTED_METRICA]: item[SELECTED_METRICA]
             }))} 
-            selectedMetrica={selectedMetrica}
+            selectedMetrica={SELECTED_METRICA}
             multipleMunicipios={multipleMunicipios}
             showMarkers={showMarkers}
           />
