@@ -807,6 +807,86 @@ def get_pib_stats():
             'traceback': traceback.format_exc() if app.debug else None
         }), 500
 
+@app.route('/api/pib/download', methods=['GET'])
+def download_pib_data():
+    """Endpoint para descargar datos de PIB filtrados como CSV"""
+    try:
+        df = get_pib_data().copy()
+        
+        # Aplicar los mismos filtros que en /api/pib/data
+        municipio = request.args.get('municipio')
+        municipios = request.args.getlist('municipios')  # Lista de municipios
+        from_date = request.args.get('from')
+        to_date = request.args.get('to')
+        columns = request.args.get('columns')
+        
+        # Filtro por municipio(s)
+        if municipios:
+            if 'municipio' in df.columns:
+                df = df[df['municipio'].str.lower().isin([m.lower() for m in municipios])]
+        elif municipio and 'municipio' in df.columns:
+            df = df[df['municipio'].str.lower() == municipio.lower()]
+        
+        # Filtros de fecha
+        if 'fecha' in df.columns:
+            if not pd.api.types.is_datetime64_any_dtype(df['fecha']):
+                df['fecha'] = pd.to_datetime(df['fecha'], errors='coerce')
+            
+            if from_date:
+                df = df[df['fecha'] >= pd.to_datetime(from_date)]
+            if to_date:
+                df = df[df['fecha'] <= pd.to_datetime(to_date)]
+            
+            # Ordenar por fecha
+            df = df.sort_values('fecha')
+        
+        # Selección de columnas - solo PIB municipal
+        # Incluir solo: fecha, municipio, entidad_federativa, pib_mun
+        pib_mun_columns = ['fecha', 'municipio', 'entidad_federativa', 'pib_mun']
+        available_columns = [col for col in pib_mun_columns if col in df.columns]
+        if available_columns:
+            df = df[available_columns]
+        
+        # Convertir fechas a string formato legible
+        if 'fecha' in df.columns and pd.api.types.is_datetime64_any_dtype(df['fecha']):
+            df['fecha'] = df['fecha'].dt.strftime('%Y-%m-%d')
+        
+        # Reemplazar NaN y valores infinitos
+        df = df.replace([float('inf'), float('-inf')], '')
+        df = df.fillna('')
+        
+        # Convertir DataFrame a CSV
+        output = StringIO()
+        df.to_csv(output, index=False, encoding='utf-8-sig')  # utf-8-sig para Excel
+        output.seek(0)
+        
+        # Generar nombre de archivo
+        filename = 'datos_pib'
+        if municipios:
+            filename += f"_{len(municipios)}_municipios"
+        elif municipio:
+            filename += f"_{municipio.replace(' ', '_')}"
+        filename += '.csv'
+        
+        # Crear respuesta con headers apropiados para descarga
+        return Response(
+            output.getvalue(),
+            mimetype='text/csv',
+            headers={
+                'Content-Disposition': f'attachment; filename="{filename}"',
+                'Content-Type': 'text/csv; charset=utf-8-sig'
+            }
+        )
+    except Exception as e:
+        import traceback
+        error_msg = f"Error en download_pib_data: {str(e)}\n{traceback.format_exc()}"
+        print(error_msg)
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'traceback': traceback.format_exc() if app.debug else None
+        }), 500
+
 @app.route('/api/health', methods=['GET'])
 def health_check():
     """Endpoint de verificación de salud"""

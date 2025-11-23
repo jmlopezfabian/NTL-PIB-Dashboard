@@ -110,6 +110,60 @@ const PIBDashboard = () => {
     setDateRange(range);
   };
 
+  const handleDownloadData = async () => {
+    try {
+      // Construir parámetros de la petición
+      const params = new URLSearchParams();
+      
+      // Agregar municipios si están seleccionados
+      if (selectedMunicipios.length > 0) {
+        selectedMunicipios.forEach(municipio => {
+          params.append('municipios', municipio);
+        });
+      }
+      
+      // Agregar rango de fechas si está seleccionado
+      if (dateRange) {
+        if (dateRange.startDate) {
+          params.append('from', dateRange.startDate);
+        }
+        if (dateRange.endDate) {
+          params.append('to', dateRange.endDate);
+        }
+      }
+      
+      // Hacer la petición para descargar
+      const response = await axios.get(`${API_BASE_URL}/pib/download`, {
+        params: params,
+        responseType: 'blob'
+      });
+      
+      // Crear URL temporal y descargar
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      
+      // Obtener nombre de archivo del header Content-Disposition o usar uno por defecto
+      const contentDisposition = response.headers['content-disposition'];
+      let filename = 'datos_pib.csv';
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename="?(.+)"?/i);
+        if (filenameMatch) {
+          filename = filenameMatch[1];
+        }
+      }
+      
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Error al descargar datos:', err);
+      alert('Error al descargar los datos. Por favor, intenta nuevamente.');
+    }
+  };
+
   if (loading) {
     return (
       <div className="dashboard-container">
@@ -153,6 +207,13 @@ const PIBDashboard = () => {
             title={showMarkers ? 'Ocultar markers' : 'Mostrar markers'}
           >
             {showMarkers ? '●' : '○'} {showMarkers ? 'Ocultar Markers' : 'Mostrar Markers'}
+          </button>
+          <button 
+            className="download-btn"
+            onClick={handleDownloadData}
+            title="Descargar datos filtrados como CSV"
+          >
+            ⬇ Descargar Datos
           </button>
         </div>
       </div>
