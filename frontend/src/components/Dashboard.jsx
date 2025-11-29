@@ -191,9 +191,11 @@ const Dashboard = () => {
       const contentDisposition = response.headers['content-disposition'];
       let filename = 'datos_radianza.csv';
       if (contentDisposition) {
-        const filenameMatch = contentDisposition.match(/filename="?(.+)"?/i);
-        if (filenameMatch) {
-          filename = filenameMatch[1];
+        // Extraer el nombre del archivo del header Content-Disposition
+        // Maneja tanto filename="archivo.csv" como filename=archivo.csv
+        const filenameMatch = contentDisposition.match(/filename\*?=['"]?([^'";]+)['"]?/i);
+        if (filenameMatch && filenameMatch[1]) {
+          filename = filenameMatch[1].trim();
         }
       }
       
