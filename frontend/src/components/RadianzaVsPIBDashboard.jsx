@@ -12,6 +12,7 @@ import {
   Cell
 } from 'recharts';
 import MultiMunicipioSelector from './MultiMunicipioSelector';
+import MetricaSelector, { METRICAS } from './MetricaSelector';
 import './Dashboard.css';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 
@@ -39,6 +40,7 @@ const COLORS = [
 const RadianzaVsPIBDashboard = () => {
   const [municipios, setMunicipios] = useState([]);
   const [selectedMunicipios, setSelectedMunicipios] = useState([]);
+  const [selectedMetrica, setSelectedMetrica] = useState('Media_de_radianza');
   const [combinedData, setCombinedData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -48,7 +50,7 @@ const RadianzaVsPIBDashboard = () => {
     loadInitialData();
   }, []);
 
-  // Debounce para cambios de municipios
+  // Recargar datos solo cuando cambian los municipios (no cuando cambia la métrica)
   useEffect(() => {
     if (municipios.length === 0) return;
     
@@ -84,8 +86,9 @@ const RadianzaVsPIBDashboard = () => {
       const allMunicipios = [...new Set([...radianzaMunicipios, ...pibMunicipios])].sort();
       setMunicipios(allMunicipios);
       
+      // Seleccionar todos los municipios por defecto
       if (allMunicipios.length > 0) {
-        setSelectedMunicipios([allMunicipios[0]]);
+        setSelectedMunicipios(allMunicipios);
       }
     } catch (err) {
       console.error('Error cargando municipios:', err);
@@ -126,11 +129,11 @@ const RadianzaVsPIBDashboard = () => {
   const scatterDataByMunicipio = useMemo(() => {
     if (!combinedData || combinedData.length === 0) return {};
     
-    // Filtrar y procesar datos
+    // Filtrar y procesar datos usando la métrica seleccionada
     const validData = combinedData
       .map(d => ({
         pib: parseFloat(d.pib_mun),
-        radianza: parseFloat(d.Media_de_radianza),
+        radianza: parseFloat(d[selectedMetrica]),
         municipio: (d.municipio || d.Municipio || '').toString().trim()
       }))
       .filter(d => !isNaN(d.pib) && !isNaN(d.radianza) && d.pib > 0 && d.radianza > 0 && d.municipio);
@@ -144,17 +147,8 @@ const RadianzaVsPIBDashboard = () => {
       grouped[d.municipio].push({ pib: d.pib, radianza: d.radianza });
     });
     
-    // Limitar puntos por municipio si hay muchos datos
-    const maxPointsPerMunicipio = 500;
-    Object.keys(grouped).forEach(municipio => {
-      if (grouped[municipio].length > maxPointsPerMunicipio) {
-        const step = Math.ceil(grouped[municipio].length / maxPointsPerMunicipio);
-        grouped[municipio] = grouped[municipio].filter((_, i) => i % step === 0);
-      }
-    });
-    
     return grouped;
-  }, [combinedData]);
+  }, [combinedData, selectedMetrica]);
 
   // Obtener lista de municipios ordenados
   const municipiosInData = useMemo(() => {
@@ -186,6 +180,10 @@ const RadianzaVsPIBDashboard = () => {
             selectedMunicipios={selectedMunicipios}
             onSelectMunicipios={setSelectedMunicipios}
           />
+          <MetricaSelector
+            selectedMetrica={selectedMetrica}
+            onSelectMetrica={setSelectedMetrica}
+          />
         </div>
       </div>
 
@@ -213,8 +211,14 @@ const RadianzaVsPIBDashboard = () => {
               <YAxis 
                 type="number" 
                 dataKey="radianza" 
-                name="Radianza Media"
-                label={{ value: 'Radianza Media', angle: -90, position: 'insideLeft' }}
+                name={METRICAS.find(m => m.value === selectedMetrica)?.label || selectedMetrica}
+                label={{ 
+                  value: METRICAS.find(m => m.value === selectedMetrica)?.label || selectedMetrica, 
+                  angle: -90, 
+                  position: 'insideLeft',
+                  offset: 10,
+                  style: { textAnchor: 'middle' }
+                }}
               />
               <Tooltip 
                 cursor={{ strokeDasharray: '3 3' }}
@@ -230,7 +234,9 @@ const RadianzaVsPIBDashboard = () => {
                       }}>
                         <p style={{ margin: 0, fontWeight: 'bold' }}>{data.municipio || 'Municipio'}</p>
                         <p style={{ margin: '5px 0 0 0' }}>PIB: {data.pib?.toFixed(2) || 'N/A'}</p>
-                        <p style={{ margin: '5px 0 0 0' }}>Radianza: {data.radianza?.toFixed(2) || 'N/A'}</p>
+                        <p style={{ margin: '5px 0 0 0' }}>
+                          {METRICAS.find(m => m.value === selectedMetrica)?.label || selectedMetrica}: {data.radianza?.toFixed(2) || 'N/A'}
+                        </p>
                       </div>
                     );
                   }

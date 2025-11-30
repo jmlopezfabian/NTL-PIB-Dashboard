@@ -33,7 +33,8 @@ const RadianzaChart = ({
   data, 
   selectedMetrica = 'Media_de_radianza', 
   multipleMunicipios = false,
-  showMarkers = true
+  showMarkers = true,
+  loading = false
 }) => {
   // Obtener el nombre de la métrica para mostrar
   const getMetricaLabel = (key) => {
@@ -100,6 +101,10 @@ const RadianzaChart = ({
   }, [data, multipleMunicipios]);
 
   // Verificar datos después de los hooks
+  if (loading) {
+    return <div className="loading" style={{ padding: '2rem', textAlign: 'center' }}>Cargando datos...</div>;
+  }
+  
   if (!data || data.length === 0 || chartData.length === 0) {
     return <div className="no-data">No hay datos disponibles</div>;
   }

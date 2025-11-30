@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import axios from 'axios';
 import {
   BarChart,
@@ -35,24 +35,50 @@ const PIBDashboard = () => {
   const [dateRange, setDateRange] = useState(null);
   const [showMarkers, setShowMarkers] = useState(true);
   const [edaDataLoaded, setEdaDataLoaded] = useState(false);
+  const [loadingMunicipioData, setLoadingMunicipioData] = useState(false);
 
   useEffect(() => {
     loadInitialData();
   }, []);
 
-  useEffect(() => {
-    if (selectedMunicipios.length > 0) {
-      loadMultipleMunicipioData(selectedMunicipios);
-    }
-  }, [selectedMunicipios]);
+  // Ref para el timeout de debounce
+  const debounceTimerRef = useRef(null);
 
-  // Cargar datos del EDA cuando se cambia a la pestaña EDA
+  // Debounce para la carga de datos de municipios
   useEffect(() => {
-    if (activeTab === 'eda' && !edaDataLoaded && municipios.length > 0) {
+    // Limpiar timer anterior
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+
+    if (selectedMunicipios.length > 0) {
+      // Debounce de 300ms para evitar cargas excesivas
+      debounceTimerRef.current = setTimeout(() => {
+        loadMultipleMunicipioData(selectedMunicipios);
+      }, 300);
+    } else {
+      // Limpiar datos cuando no hay municipios seleccionados
+      setMunicipioData([]);
+    }
+
+    // Cleanup
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, [selectedMunicipios, loadMultipleMunicipioData]);
+
+  // Cargar datos del EDA solo cuando se cambia a la pestaña EDA
+  useEffect(() => {
+    if (activeTab === 'eda' && municipios.length > 0) {
+      // Si cambian los municipios, recargar datos
+      if (edaDataLoaded) {
+        setEdaDataLoaded(false);
+      }
       loadEdaData();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, edaDataLoaded, municipios.length]);
+  }, [activeTab, selectedMunicipios, loadEdaData, municipios.length, edaDataLoaded]);
 
   const loadInitialData = async () => {
     try {
@@ -88,28 +114,49 @@ const PIBDashboard = () => {
     }
   };
 
-  const loadMultipleMunicipioData = async (municipiosList) => {
+  const loadMultipleMunicipioData = useCallback(async (municipiosList) => {
     try {
-      // Cargar todos los años (sin filtro)
-      const promises = municipiosList.map(municipio => {
-        return axios.get(`${API_BASE_URL}/pib/municipio/${encodeURIComponent(municipio)}`);
-      });
+      setLoadingMunicipioData(true);
+      // Limpiar datos primero para evitar mostrar datos antiguos
+      setMunicipioData([]);
       
-      const responses = await Promise.all(promises);
-      const allData = responses
-        .filter(res => res.data.success)
-        .flatMap(res => res.data.data.map(item => ({
-          ...item,
-          Fecha: item.fecha, // Normalizar nombre de columna para el gráfico
-          Municipio: item.municipio,
-          [SELECTED_METRICA]: item[SELECTED_METRICA] // Asegurar que la métrica esté disponible
-        })));
+      if (municipiosList.length === 0) {
+        setLoadingMunicipioData(false);
+        return;
+      }
+      
+      // Limitar a 3 municipios simultáneos para mejor rendimiento
+      const maxConcurrent = 3;
+      const allData = [];
+      
+      // Procesar en lotes para evitar sobrecargar el servidor
+      for (let i = 0; i < municipiosList.length; i += maxConcurrent) {
+        const batch = municipiosList.slice(i, i + maxConcurrent);
+        const promises = batch.map(municipio => 
+          axios.get(`${API_BASE_URL}/pib/municipio/${encodeURIComponent(municipio)}`)
+        );
+        
+        const responses = await Promise.all(promises);
+        const batchData = responses
+          .filter(res => res.data.success)
+          .flatMap(res => res.data.data.map(item => ({
+            ...item,
+            Fecha: item.fecha, // Normalizar nombre de columna para el gráfico
+            Municipio: item.municipio,
+            [SELECTED_METRICA]: item[SELECTED_METRICA] // Asegurar que la métrica esté disponible
+          })));
+        
+        allData.push(...batchData);
+      }
       
       setMunicipioData(allData);
     } catch (err) {
       console.error('Error al cargar datos de municipios:', err);
+      setMunicipioData([]); // Limpiar en caso de error
+    } finally {
+      setLoadingMunicipioData(false);
     }
-  };
+  }, []);
 
   // Filtrar datos según el rango de fechas seleccionado
   const filteredMunicipioData = useMemo(() => {
@@ -129,28 +176,126 @@ const PIBDashboard = () => {
     });
   }, [municipioData, dateRange]);
 
-  const loadEdaData = async () => {
+  const loadEdaData = useCallback(async () => {
     try {
-      setLoading(true);
-      const params = new URLSearchParams();
-      if (selectedMunicipios.length > 0) {
-        selectedMunicipios.forEach(municipio => {
-          params.append('municipios', municipio);
-        });
+      // Limpiar datos primero
+      setPibData([]);
+      
+      if (selectedMunicipios.length === 0) {
+        setEdaDataLoaded(true);
+        return;
       }
+      
+      const params = new URLSearchParams();
+      selectedMunicipios.forEach(municipio => {
+        params.append('municipios', municipio);
+      });
       
       const response = await axios.get(`${API_BASE_URL}/pib/data?${params.toString()}`);
       
       if (response.data.success) {
         setPibData(response.data.data);
-        setEdaDataLoaded(true);
       }
+      
+      setEdaDataLoaded(true);
     } catch (err) {
       console.error('Error cargando datos EDA:', err);
-    } finally {
-      setLoading(false);
+      setPibData([]);
+      setEdaDataLoaded(true);
     }
-  };
+  }, [selectedMunicipios]);
+
+  // Estadísticas descriptivas para PIB (EDA) - DEBE estar antes de returns tempranos
+  const pibStats = useMemo(() => {
+    if (!pibData || pibData.length === 0 || activeTab !== 'eda') return null;
+    
+    const pibValues = pibData
+      .map(d => parseFloat(d.pib_mun))
+      .filter(v => !isNaN(v) && v > 0);
+    
+    if (pibValues.length === 0) return null;
+
+    const sorted = pibValues.slice().sort((a, b) => a - b);
+    const sum = pibValues.reduce((a, b) => a + b, 0);
+    const mean = sum / pibValues.length;
+    const variance = pibValues.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / pibValues.length;
+    const stdDev = Math.sqrt(variance);
+    
+    return {
+      count: pibValues.length,
+      mean: mean.toFixed(2),
+      median: sorted[Math.floor(sorted.length / 2)].toFixed(2),
+      stdDev: stdDev.toFixed(2),
+      min: sorted[0].toFixed(2),
+      max: sorted[sorted.length - 1].toFixed(2),
+      q1: sorted[Math.floor(sorted.length * 0.25)].toFixed(2),
+      q3: sorted[Math.floor(sorted.length * 0.75)].toFixed(2)
+    };
+  }, [pibData, activeTab]);
+
+  // Histograma de PIB (EDA) - DEBE estar antes de returns tempranos
+  const pibHistogram = useMemo(() => {
+    if (!pibData || pibData.length === 0 || activeTab !== 'eda') return [];
+    
+    const sampledData = pibData;
+    
+    const pibValues = sampledData
+      .map(d => parseFloat(d.pib_mun))
+      .filter(v => !isNaN(v) && v > 0);
+    
+    if (pibValues.length === 0) return [];
+    
+    let min = Infinity;
+    let max = -Infinity;
+    for (let i = 0; i < pibValues.length; i++) {
+      const val = pibValues[i];
+      if (val < min) min = val;
+      if (val > max) max = val;
+    }
+    
+    const bins = 20;
+    const binWidth = (max - min) / bins;
+    
+    const histogram = Array(bins).fill(0).map((_, i) => ({
+      bin: i + 1,
+      count: 0,
+      mid: min + (i + 0.5) * binWidth,
+      min: min + i * binWidth,
+      max: min + (i + 1) * binWidth
+    }));
+    
+    pibValues.forEach(val => {
+      const binIndex = Math.min(Math.floor((val - min) / binWidth), bins - 1);
+      histogram[binIndex].count++;
+    });
+    
+    return histogram;
+  }, [pibData, activeTab]);
+
+  // Serie temporal de PIB (EDA) - DEBE estar antes de returns tempranos
+  const pibTimeSeries = useMemo(() => {
+    if (!pibData || pibData.length === 0 || activeTab !== 'eda') return [];
+    
+    const grouped = new Map();
+    for (let i = 0; i < pibData.length; i++) {
+      const d = pibData[i];
+      const fecha = d.fecha?.split('T')[0] || d.fecha;
+      const pib = parseFloat(d.pib_mun);
+      if (fecha && !isNaN(pib) && pib > 0) {
+        const existing = grouped.get(fecha);
+        if (existing) {
+          existing.sum += pib;
+          existing.count += 1;
+        } else {
+          grouped.set(fecha, { fecha, sum: pib, count: 1 });
+        }
+      }
+    }
+    
+    return Array.from(grouped.values())
+      .map(d => ({ fecha: d.fecha, promedio: d.sum / d.count }))
+      .sort((a, b) => a.fecha.localeCompare(b.fecha));
+  }, [pibData, activeTab]);
 
   const handleDateRangeChange = (range) => {
     setDateRange(range);
@@ -230,99 +375,6 @@ const PIBDashboard = () => {
 
   const multipleMunicipios = selectedMunicipios.length > 1;
 
-  // Estadísticas descriptivas para PIB (EDA)
-  const pibStats = useMemo(() => {
-    if (!pibData || pibData.length === 0 || activeTab !== 'eda') return null;
-    
-    const pibValues = pibData
-      .map(d => parseFloat(d.pib_mun))
-      .filter(v => !isNaN(v) && v > 0);
-    
-    if (pibValues.length === 0) return null;
-
-    const sorted = pibValues.slice().sort((a, b) => a - b);
-    const sum = pibValues.reduce((a, b) => a + b, 0);
-    const mean = sum / pibValues.length;
-    const variance = pibValues.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / pibValues.length;
-    const stdDev = Math.sqrt(variance);
-    
-    return {
-      count: pibValues.length,
-      mean: mean.toFixed(2),
-      median: sorted[Math.floor(sorted.length / 2)].toFixed(2),
-      stdDev: stdDev.toFixed(2),
-      min: sorted[0].toFixed(2),
-      max: sorted[sorted.length - 1].toFixed(2),
-      q1: sorted[Math.floor(sorted.length * 0.25)].toFixed(2),
-      q3: sorted[Math.floor(sorted.length * 0.75)].toFixed(2)
-    };
-  }, [pibData, activeTab]);
-
-  // Histograma de PIB (EDA)
-  const pibHistogram = useMemo(() => {
-    if (!pibData || pibData.length === 0 || activeTab !== 'eda') return [];
-    
-    const sampleSize = Math.min(pibData.length, 2000);
-    const sampledData = pibData.length > 2000 
-      ? pibData.filter((_, i) => i % Math.ceil(pibData.length / sampleSize) === 0)
-      : pibData;
-    
-    const pibValues = sampledData
-      .map(d => parseFloat(d.pib_mun))
-      .filter(v => !isNaN(v) && v > 0);
-    
-    if (pibValues.length === 0) return [];
-    
-    let min = Infinity;
-    let max = -Infinity;
-    for (let i = 0; i < pibValues.length; i++) {
-      const val = pibValues[i];
-      if (val < min) min = val;
-      if (val > max) max = val;
-    }
-    
-    const bins = 20;
-    const binWidth = (max - min) / bins;
-    
-    const histogram = Array(bins).fill(0).map((_, i) => ({
-      range: `${(min + i * binWidth).toFixed(0)} - ${(min + (i + 1) * binWidth).toFixed(0)}`,
-      count: 0,
-      mid: min + (i + 0.5) * binWidth
-    }));
-    
-    pibValues.forEach(val => {
-      const binIndex = Math.min(Math.floor((val - min) / binWidth), bins - 1);
-      histogram[binIndex].count++;
-    });
-    
-    return histogram;
-  }, [pibData, activeTab]);
-
-  // Serie temporal de PIB (EDA)
-  const pibTimeSeries = useMemo(() => {
-    if (!pibData || pibData.length === 0 || activeTab !== 'eda') return [];
-    
-    const grouped = new Map();
-    for (let i = 0; i < pibData.length; i++) {
-      const d = pibData[i];
-      const fecha = d.fecha?.split('T')[0] || d.fecha;
-      const pib = parseFloat(d.pib_mun);
-      if (fecha && !isNaN(pib) && pib > 0) {
-        const existing = grouped.get(fecha);
-        if (existing) {
-          existing.sum += pib;
-          existing.count += 1;
-        } else {
-          grouped.set(fecha, { fecha, sum: pib, count: 1 });
-        }
-      }
-    }
-    
-    return Array.from(grouped.values())
-      .map(d => ({ fecha: d.fecha, promedio: d.sum / d.count }))
-      .sort((a, b) => a.fecha.localeCompare(b.fecha));
-  }, [pibData, activeTab]);
-
   return (
     <div className="dashboard-container">
       <div className="eda-tabs">
@@ -394,6 +446,7 @@ const PIBDashboard = () => {
             selectedMetrica={SELECTED_METRICA}
             multipleMunicipios={multipleMunicipios}
             showMarkers={showMarkers}
+            loading={loadingMunicipioData}
           />
         </div>
       </div>

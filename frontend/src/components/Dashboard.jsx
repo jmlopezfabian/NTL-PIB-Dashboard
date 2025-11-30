@@ -5,12 +5,15 @@ import {
   Bar,
   LineChart,
   Line,
+  ScatterChart,
+  Scatter,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   Legend,
-  ResponsiveContainer
+  ResponsiveContainer,
+  Cell
 } from 'recharts';
 import './Dashboard.css';
 import MultiMunicipioSelector from './MultiMunicipioSelector';
@@ -48,6 +51,7 @@ const Dashboard = () => {
   const [selectedYear, setSelectedYear] = useState(null);
   const [showMarkers, setShowMarkers] = useState(true);
   const [edaDataLoaded, setEdaDataLoaded] = useState(false);
+  const [loadingMunicipioData, setLoadingMunicipioData] = useState(false);
 
   useEffect(() => {
     loadInitialData();
@@ -56,16 +60,21 @@ const Dashboard = () => {
   useEffect(() => {
     if (selectedMunicipios.length > 0) {
       loadMultipleMunicipioData(selectedMunicipios, selectedYear);
+    } else {
+      // Limpiar datos cuando no hay municipios seleccionados
+      setMunicipioData([]);
     }
   }, [selectedMunicipios, selectedYear]);
 
-  // Cargar datos del EDA cuando se cambia a la pestaña EDA
+  // Cargar datos del EDA cuando se cambia a la pestaña EDA o cuando cambian los municipios
   useEffect(() => {
-    if (activeTab === 'eda' && !edaDataLoaded && municipios.length > 0) {
+    if (activeTab === 'eda' && municipios.length > 0) {
+      // Resetear el flag cuando cambian los municipios para forzar recarga
+      setEdaDataLoaded(false);
       loadEdaData();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, edaDataLoaded, municipios.length]);
+  }, [activeTab, selectedMunicipios, municipios.length]);
 
   const loadInitialData = async () => {
     try {
@@ -120,6 +129,15 @@ const Dashboard = () => {
 
   const loadMultipleMunicipioData = async (municipiosList, year = null) => {
     try {
+      setLoadingMunicipioData(true);
+      // Limpiar datos primero para evitar mostrar datos antiguos
+      setMunicipioData([]);
+      
+      if (municipiosList.length === 0) {
+        setLoadingMunicipioData(false);
+        return;
+      }
+      
       const promises = municipiosList.map(municipio => {
         const params = {};
         if (year) {
@@ -136,6 +154,9 @@ const Dashboard = () => {
       setMunicipioData(allData);
     } catch (err) {
       console.error('Error al cargar datos de municipios:', err);
+      setMunicipioData([]); // Limpiar en caso de error
+    } finally {
+      setLoadingMunicipioData(false);
     }
   };
 
@@ -198,13 +219,10 @@ const Dashboard = () => {
   const radianzaHistogram = useMemo(() => {
     if (!radianzaData || radianzaData.length === 0 || activeTab !== 'eda') return [];
     
-    const sampleSize = Math.min(radianzaData.length, 2000);
-    const sampledData = radianzaData.length > 2000 
-      ? radianzaData.filter((_, i) => i % Math.ceil(radianzaData.length / sampleSize) === 0)
-      : radianzaData;
+    const sampledData = radianzaData;
     
     const radianzaValues = sampledData
-      .map(d => parseFloat(d.Media_de_radianza))
+      .map(d => parseFloat(d[selectedMetrica]))
       .filter(v => !isNaN(v) && v > 0);
     
     if (radianzaValues.length === 0) return [];
@@ -217,13 +235,16 @@ const Dashboard = () => {
       if (val > max) max = val;
     }
     
-    const bins = 20;
+    // Más barras (50 bins)
+    const bins = 50;
     const binWidth = (max - min) / bins;
     
     const histogram = Array(bins).fill(0).map((_, i) => ({
-      range: `${(min + i * binWidth).toFixed(0)} - ${(min + (i + 1) * binWidth).toFixed(0)}`,
+      bin: i + 1,
       count: 0,
-      mid: min + (i + 0.5) * binWidth
+      mid: min + (i + 0.5) * binWidth,
+      min: min + i * binWidth,
+      max: min + (i + 1) * binWidth
     }));
     
     radianzaValues.forEach(val => {
@@ -232,32 +253,8 @@ const Dashboard = () => {
     });
     
     return histogram;
-  }, [radianzaData, activeTab]);
+  }, [radianzaData, activeTab, selectedMetrica]);
 
-  // Serie temporal de Radianza (EDA) - DEBE estar antes de returns tempranos
-  const radianzaTimeSeries = useMemo(() => {
-    if (!radianzaData || radianzaData.length === 0 || activeTab !== 'eda') return [];
-    
-    const grouped = new Map();
-    for (let i = 0; i < radianzaData.length; i++) {
-      const d = radianzaData[i];
-      const fecha = d.Fecha?.split('T')[0] || d.Fecha;
-      const radianza = parseFloat(d.Media_de_radianza);
-      if (fecha && !isNaN(radianza) && radianza > 0) {
-        const existing = grouped.get(fecha);
-        if (existing) {
-          existing.sum += radianza;
-          existing.count += 1;
-        } else {
-          grouped.set(fecha, { fecha, sum: radianza, count: 1 });
-        }
-      }
-    }
-    
-    return Array.from(grouped.values())
-      .map(d => ({ fecha: d.fecha, promedio: d.sum / d.count }))
-      .sort((a, b) => a.fecha.localeCompare(b.fecha));
-  }, [radianzaData, activeTab]);
 
   // Suma de Radianza por Año y Municipio (EDA) - DEBE estar antes de returns tempranos
   const sumaRadianzaPorAnioMunicipio = useMemo(() => {
@@ -368,9 +365,135 @@ const Dashboard = () => {
     return boxPlotStats;
   }, [radianzaDataAll, selectedMetrica, activeTab]);
 
+  // Scatter Plot: Media de Radianza vs Desviación Estándar (EDA)
+  // Lógica exacta: grouped_data = ntl.groupby("Municipio")[["Media_de_radianza", "Desviacion_estandar_de_radianza"]].mean().reset_index()
+  // Función para calcular ticks "bonitos" con pasos redondeados
+  const getNiceTicks = useCallback((min, max, numTicks = 5) => {
+    const range = max - min;
+    const rawStep = range / (numTicks - 1);
+    
+    // Calcular un paso "bonito" (redondeado)
+    const magnitude = Math.pow(10, Math.floor(Math.log10(rawStep)));
+    const normalizedStep = rawStep / magnitude;
+    
+    let niceStep;
+    if (normalizedStep <= 1) niceStep = 1;
+    else if (normalizedStep <= 2) niceStep = 2;
+    else if (normalizedStep <= 5) niceStep = 5;
+    else niceStep = 10;
+    
+    niceStep = niceStep * magnitude;
+    
+    // Ajustar min y max para que sean múltiplos del paso
+    const niceMin = Math.floor(min / niceStep) * niceStep;
+    const niceMax = Math.ceil(max / niceStep) * niceStep;
+    
+    // Generar ticks
+    const ticks = [];
+    for (let tick = niceMin; tick <= niceMax; tick += niceStep) {
+      ticks.push(tick);
+    }
+    
+    return { ticks, min: niceMin, max: niceMax };
+  }, []);
+
+  const scatterPlotData = useMemo(() => {
+    if (!radianzaDataAll || radianzaDataAll.length === 0 || activeTab !== 'eda') return [];
+    
+    const groupedByMunicipio = {};
+    
+    // Agrupar datos por municipio (equivalente a groupby("Municipio"))
+    for (let i = 0; i < radianzaDataAll.length; i++) {
+      const d = radianzaDataAll[i];
+      const municipio = (d.Municipio || '').toString().trim();
+      
+      if (!municipio) continue;
+      
+      // Obtener valores de las columnas (equivalente a [["Media_de_radianza", "Desviacion_estandar_de_radianza"]])
+      // El backend puede devolver strings vacíos, así que los tratamos como NaN
+      let media = d.Media_de_radianza;
+      let desvStd = d.Desviacion_estandar_de_radianza;
+      
+      // Convertir a número (equivalente a astype(float))
+      if (media === '' || media === null || media === undefined) {
+        media = NaN;
+      } else {
+        media = parseFloat(media);
+      }
+      
+      if (desvStd === '' || desvStd === null || desvStd === undefined) {
+        desvStd = NaN;
+      } else {
+        desvStd = parseFloat(desvStd);
+      }
+      
+      // Agrupar todos los valores (pandas ignora NaN automáticamente en .mean())
+      if (!groupedByMunicipio[municipio]) {
+        groupedByMunicipio[municipio] = { media: [], desvStd: [] };
+      }
+      
+      // Solo agregar valores numéricos válidos (NaN se excluyen)
+      if (!isNaN(media) && isFinite(media)) {
+        groupedByMunicipio[municipio].media.push(media);
+      }
+      if (!isNaN(desvStd) && isFinite(desvStd)) {
+        groupedByMunicipio[municipio].desvStd.push(desvStd);
+      }
+    }
+    
+    // Calcular promedio (equivalente a .mean())
+    const scatterData = Object.keys(groupedByMunicipio)
+      .map(municipio => {
+        const medias = groupedByMunicipio[municipio].media;
+        const desvStds = groupedByMunicipio[municipio].desvStd;
+        
+        // Solo incluir si hay al menos un valor válido en cada columna
+        if (medias.length === 0 || desvStds.length === 0) return null;
+        
+        // Calcular media (promedio) - equivalente a .mean()
+        const promedioMedia = medias.reduce((sum, val) => sum + val, 0) / medias.length;
+        const promedioDesvStd = desvStds.reduce((sum, val) => sum + val, 0) / desvStds.length;
+        
+        return {
+          municipio,
+          media: promedioMedia,
+          desvStd: promedioDesvStd
+        };
+      })
+      .filter(Boolean);
+    
+    return scatterData;
+  }, [radianzaDataAll, activeTab]);
+
+  // Calcular ticks bonitos para los ejes del scatter plot
+  const scatterAxisTicks = useMemo(() => {
+    if (!scatterPlotData || scatterPlotData.length === 0) {
+      return { xTicks: null, yTicks: null };
+    }
+    
+    const mediaValues = scatterPlotData.map(d => d.media).filter(v => !isNaN(v) && isFinite(v));
+    const desvStdValues = scatterPlotData.map(d => d.desvStd).filter(v => !isNaN(v) && isFinite(v));
+    
+    if (mediaValues.length === 0 || desvStdValues.length === 0) {
+      return { xTicks: null, yTicks: null };
+    }
+    
+    const mediaMin = Math.min(...mediaValues);
+    const mediaMax = Math.max(...mediaValues);
+    const desvStdMin = Math.min(...desvStdValues);
+    const desvStdMax = Math.max(...desvStdValues);
+    
+    const xTicks = getNiceTicks(mediaMin, mediaMax, 5);
+    const yTicks = getNiceTicks(desvStdMin, desvStdMax, 5);
+    
+    return { xTicks, yTicks };
+  }, [scatterPlotData, getNiceTicks]);
+
   const loadEdaData = async () => {
     try {
-      setLoading(true);
+      // Limpiar datos primero
+      setRadianzaData([]);
+      
       const params = new URLSearchParams();
       if (selectedMunicipios.length > 0) {
         selectedMunicipios.forEach(municipio => {
@@ -378,24 +501,36 @@ const Dashboard = () => {
         });
       }
       
-      // Cargar datos filtrados
-      const [filteredRes, allRes] = await Promise.all([
-        axios.get(`${API_BASE_URL}/data?${params.toString()}`),
-        axios.get(`${API_BASE_URL}/data`, { params: { limit: 10000 } })
-      ]);
+      // Cargar datos filtrados (solo si hay municipios seleccionados)
+      const promises = [];
       
-      if (filteredRes.data.success) {
-        setRadianzaData(filteredRes.data.data);
-      }
-      if (allRes.data.success) {
-        setRadianzaDataAll(allRes.data.data);
+      if (selectedMunicipios.length > 0) {
+        promises.push(
+          axios.get(`${API_BASE_URL}/data?${params.toString()}`)
+            .then(res => {
+              if (res.data.success) {
+                setRadianzaData(res.data.data);
+              }
+            })
+        );
       }
       
+      // Siempre cargar todos los datos para el box plot (no filtrado)
+      promises.push(
+        axios.get(`${API_BASE_URL}/data`)
+          .then(res => {
+            if (res.data.success) {
+              setRadianzaDataAll(res.data.data);
+            }
+          })
+          .catch(err => console.warn('Error cargando datos completos para box plot:', err))
+      );
+      
+      await Promise.all(promises);
       setEdaDataLoaded(true);
     } catch (err) {
       console.error('Error cargando datos EDA:', err);
-    } finally {
-      setLoading(false);
+      setRadianzaData([]);
     }
   };
 
@@ -502,15 +637,15 @@ const Dashboard = () => {
           />
           {activeTab === 'visualizacion' ? (
             <>
-              <MultiMetricaSelector
-                selectedMetricas={selectedMetricas}
-                onSelectMetricas={setSelectedMetricas}
-              />
-              <YearSelector
-                years={years}
-                selectedYear={selectedYear}
-                onSelectYear={setSelectedYear}
-              />
+          <MultiMetricaSelector
+            selectedMetricas={selectedMetricas}
+            onSelectMetricas={setSelectedMetricas}
+          />
+          <YearSelector
+            years={years}
+            selectedYear={selectedYear}
+            onSelectYear={setSelectedYear}
+          />
             </>
           ) : (
             <MetricaSelector
@@ -528,27 +663,27 @@ const Dashboard = () => {
           </div>
         )}
         {activeTab === 'visualizacion' && (
-          <div className="chart-controls">
-            <button 
-              className={`toggle-markers-btn ${showMarkers ? 'active' : ''}`}
-              onClick={() => setShowMarkers(!showMarkers)}
-              title={showMarkers ? 'Ocultar markers' : 'Mostrar markers'}
-            >
-              {showMarkers ? '●' : '○'} {showMarkers ? 'Ocultar Markers' : 'Mostrar Markers'}
-            </button>
-            <button 
-              className="download-btn"
-              onClick={handleDownloadData}
-              title="Descargar datos filtrados como CSV"
-            >
-              ⬇ Descargar Datos
-            </button>
-          </div>
+        <div className="chart-controls">
+          <button 
+            className={`toggle-markers-btn ${showMarkers ? 'active' : ''}`}
+            onClick={() => setShowMarkers(!showMarkers)}
+            title={showMarkers ? 'Ocultar markers' : 'Mostrar markers'}
+          >
+            {showMarkers ? '●' : '○'} {showMarkers ? 'Ocultar Markers' : 'Mostrar Markers'}
+          </button>
+          <button 
+            className="download-btn"
+            onClick={handleDownloadData}
+            title="Descargar datos filtrados como CSV"
+          >
+            ⬇ Descargar Datos
+          </button>
+        </div>
         )}
       </div>
 
       {activeTab === 'visualizacion' && (
-        <div className="charts-grid">
+      <div className="charts-grid">
         {useFacets ? (
           // Facetas: un gráfico por métrica
           selectedMetricas.map((metrica) => {
@@ -566,6 +701,7 @@ const Dashboard = () => {
                   selectedMetrica={metrica}
                   multipleMunicipios={multipleMunicipios}
                   showMarkers={showMarkers}
+                  loading={loadingMunicipioData}
                 />
               </div>
             );
@@ -584,6 +720,7 @@ const Dashboard = () => {
               selectedMetrica={selectedMetricas[0] || 'Media_de_radianza'}
               multipleMunicipios={multipleMunicipios}
               showMarkers={showMarkers}
+              loading={loadingMunicipioData}
             />
           </div>
         )}
@@ -600,84 +737,169 @@ const Dashboard = () => {
               </span>
             )}
           </h2>
-          
-          {radianzaStats && (
-            <div className="stats-card">
-              <h3>Estadísticas Descriptivas</h3>
-              <div className="stats-grid">
-                <div className="stat-item">
-                  <span className="stat-label">Número de registros:</span>
-                  <span className="stat-value">{radianzaStats.count}</span>
-                </div>
-                <div className="stat-item">
-                  <span className="stat-label">Media:</span>
-                  <span className="stat-value">{radianzaStats.mean}</span>
-                </div>
-                <div className="stat-item">
-                  <span className="stat-label">Mediana:</span>
-                  <span className="stat-value">{radianzaStats.median}</span>
-                </div>
-                <div className="stat-item">
-                  <span className="stat-label">Desviación Estándar:</span>
-                  <span className="stat-value">{radianzaStats.stdDev}</span>
-                </div>
-                <div className="stat-item">
-                  <span className="stat-label">Mínimo:</span>
-                  <span className="stat-value">{radianzaStats.min}</span>
-                </div>
-                <div className="stat-item">
-                  <span className="stat-label">Máximo:</span>
-                  <span className="stat-value">{radianzaStats.max}</span>
-                </div>
-                <div className="stat-item">
-                  <span className="stat-label">Q1 (Percentil 25):</span>
-                  <span className="stat-value">{radianzaStats.q1}</span>
-                </div>
-                <div className="stat-item">
-                  <span className="stat-label">Q3 (Percentil 75):</span>
-                  <span className="stat-value">{radianzaStats.q3}</span>
-                </div>
-              </div>
-            </div>
-          )}
 
-          <div className="chart-card">
-            <h3>Distribución de Radianza (Histograma)</h3>
+        <div className="chart-card">
+            <h3>Distribución de {METRICAS.find(m => m.value === selectedMetrica)?.label || selectedMetrica} (Histograma)</h3>
             <ResponsiveContainer width="100%" height={400}>
               <BarChart data={radianzaHistogram}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="range" angle={-45} textAnchor="end" height={100} />
-                <YAxis />
-                <Tooltip />
+                <XAxis 
+                  dataKey="mid" 
+                  type="number"
+                  scale="linear"
+                  domain={['dataMin', 'dataMax']}
+                  tick={false}
+                  label={{ 
+                    value: METRICAS.find(m => m.value === selectedMetrica)?.label || selectedMetrica, 
+                    position: 'insideBottom', 
+                    offset: -5 
+                  }}
+                />
+                <YAxis 
+                  label={{ value: 'Frecuencia', angle: -90, position: 'insideLeft' }}
+                />
+                <Tooltip 
+                  formatter={(value, name) => [`${value}`, 'Frecuencia']}
+                  labelFormatter={(label, payload) => {
+                    if (payload && payload[0] && payload[0].payload) {
+                      const data = payload[0].payload;
+                      return `Rango: ${data.min.toFixed(2)} - ${data.max.toFixed(2)}`;
+                    }
+                    return '';
+                  }}
+                  contentStyle={{
+                    backgroundColor: '#ffffff',
+                    border: '1px solid rgba(0, 0, 0, 0.1)',
+                    borderRadius: '8px',
+                    padding: '10px'
+                  }}
+                />
                 <Bar dataKey="count" fill="#764ba2" />
               </BarChart>
             </ResponsiveContainer>
           </div>
 
           <div className="chart-card">
-            <h3>Serie Temporal de Radianza</h3>
-            <ResponsiveContainer width="100%" height={400}>
-              <LineChart data={radianzaTimeSeries}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="fecha" angle={-45} textAnchor="end" height={100} />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                <Line type="monotone" dataKey="promedio" stroke="#764ba2" strokeWidth={2} name="Radianza Promedio" />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-
-          <div className="chart-card">
             <h3>Distribución de {METRICAS.find(m => m.value === selectedMetrica)?.label || selectedMetrica} por Municipio</h3>
-            <p className="chart-subtitle" style={{ fontStyle: 'italic', color: '#666', marginBottom: '1rem' }}>
-              (No afectado por filtros de municipio o año)
-            </p>
             <BoxPlot 
               data={boxPlotData}
               yAxisLabel={METRICAS.find(m => m.value === selectedMetrica)?.label || selectedMetrica}
-              height={Math.max(500, boxPlotData.length * 40)}
+              height={Math.max(500, boxPlotData.length * 50)}
             />
+          </div>
+
+          <div className="chart-card">
+            <h3>Media vs Desviación estándar de Radianza por Municipio</h3>
+            <ResponsiveContainer width="100%" height={500}>
+              <ScatterChart margin={{ top: 20, right: 30, bottom: 80, left: 100 }}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis 
+                  type="number"
+                  dataKey="media"
+                  name="Media de Radianza"
+                  label={{ 
+                    value: 'Media de Radianza (Brillo Promedio)', 
+                    position: 'insideBottom', 
+                    offset: -5,
+                    style: { textAnchor: 'middle' }
+                  }}
+                  tick={{ fontSize: 12 }}
+                  tickFormatter={(value) => Math.round(value).toString()}
+                  domain={scatterAxisTicks.xTicks ? [scatterAxisTicks.xTicks.min, scatterAxisTicks.xTicks.max] : ['dataMin', 'dataMax']}
+                  ticks={scatterAxisTicks.xTicks ? scatterAxisTicks.xTicks.ticks : undefined}
+                  allowDecimals={false}
+                />
+                <YAxis 
+                  type="number"
+                  dataKey="desvStd"
+                  name="Desviación Estándar"
+                  label={{ 
+                    value: 'Desviación Estándar (Variabilidad Espacial)', 
+                    angle: -90, 
+                    position: 'insideLeft',
+                    offset: 10,
+                    style: { textAnchor: 'middle' }
+                  }}
+                  tick={{ fontSize: 12 }}
+                  tickFormatter={(value) => Math.round(value).toString()}
+                  domain={scatterAxisTicks.yTicks ? [scatterAxisTicks.yTicks.min, scatterAxisTicks.yTicks.max] : ['dataMin', 'dataMax']}
+                  ticks={scatterAxisTicks.yTicks ? scatterAxisTicks.yTicks.ticks : undefined}
+                  allowDecimals={false}
+                />
+                <Tooltip 
+                  cursor={{ strokeDasharray: '3 3' }}
+                  content={({ active, payload }) => {
+                    if (active && payload && payload.length) {
+                      const data = payload[0].payload;
+                      return (
+                        <div style={{
+                          backgroundColor: '#ffffff',
+                          border: '1px solid rgba(0, 0, 0, 0.1)',
+                          borderRadius: '8px',
+                          padding: '10px',
+                          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)'
+                        }}>
+                          <p style={{ margin: 0, fontWeight: 'bold', marginBottom: '5px' }}>
+                            {data.municipio}
+                          </p>
+                          <p style={{ margin: '3px 0', fontSize: '12px' }}>
+                            Media: {data.media.toFixed(2)}
+                          </p>
+                          <p style={{ margin: '3px 0', fontSize: '12px' }}>
+                            Desv. Est.: {data.desvStd.toFixed(2)}
+                          </p>
+                        </div>
+                      );
+                    }
+                    return null;
+                  }}
+                />
+                <Scatter 
+                  name="Municipios" 
+                  data={scatterPlotData} 
+                  fill="#667eea"
+                  shape={(props) => {
+                    const { cx, cy, payload } = props;
+                    if (!cx || !cy || !payload) return null;
+                    
+                    const index = scatterPlotData.findIndex(d => d.municipio === payload.municipio);
+                    const color = COLORS[index >= 0 ? index % COLORS.length : 0];
+                    
+                    return (
+                      <g>
+                        <circle 
+                          cx={cx} 
+                          cy={cy} 
+                          r={5} 
+                          fill={color}
+                          stroke="#fff"
+                          strokeWidth={1.5}
+                        />
+                        {/* Etiqueta a la derecha del punto (ha="right" en Python) */}
+                        <text 
+                          x={cx + 8} 
+                          y={cy + 4} 
+                          textAnchor="start" 
+                          fontSize="9" 
+                          fill="#2a2a2a" 
+                          fontWeight="400"
+                          style={{ pointerEvents: 'none' }}
+                        >
+                          {payload.municipio}
+                        </text>
+                      </g>
+                    );
+                  }}
+                >
+                  {scatterPlotData.map((entry, index) => (
+                    <Cell 
+                      key={`cell-${index}`} 
+                      fill={COLORS[index % COLORS.length]} 
+                    />
+                  ))}
+                </Scatter>
+              </ScatterChart>
+            </ResponsiveContainer>
           </div>
 
           <div className="chart-card">

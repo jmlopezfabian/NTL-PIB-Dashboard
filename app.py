@@ -944,22 +944,131 @@ def get_combined_data():
             how='inner'
         )
         
-        # Si no hay suficientes datos con merge exacto, intentar solo por municipio (promedio)
+        # Si no hay suficientes datos con merge exacto, intentar merge por año
         if len(merged) < 100:
-            # Agrupar PIB por municipio (promedio)
-            pib_avg = df_pib.groupby('municipio_normalized').agg({
-                'pib_mun': 'mean',
-                'pibe': 'mean',
-                'porc_pob': 'mean'
-            }).reset_index()
+            # Extraer año de las fechas de radianza
+            if 'Fecha' in df_radianza.columns:
+                if not pd.api.types.is_datetime64_any_dtype(df_radianza['Fecha']):
+                    df_radianza['Fecha'] = pd.to_datetime(df_radianza['Fecha'], errors='coerce')
+                df_radianza['año'] = df_radianza['Fecha'].dt.year
             
-            # Merge solo por municipio
-            merged = pd.merge(
-                df_radianza,
-                pib_avg,
-                on='municipio_normalized',
-                how='inner'
-            )
+            # Extraer año de las fechas de PIB
+            if 'fecha' in df_pib.columns:
+                if not pd.api.types.is_datetime64_any_dtype(df_pib['fecha']):
+                    df_pib['fecha'] = pd.to_datetime(df_pib['fecha'], errors='coerce')
+                df_pib['año'] = df_pib['fecha'].dt.year
+            
+            # Intentar merge por municipio y año
+            if 'año' in df_radianza.columns and 'año' in df_pib.columns:
+                # Función auxiliar para extraer el primer número de un string concatenado
+                def extract_first_number(value):
+                    if pd.isna(value) or value == '':
+                        return None
+                    value_str = str(value)
+                    # Buscar el primer número (puede tener decimales)
+                    match = pd.Series([value_str]).str.extract(r'^(\d+\.?\d*)', expand=False)
+                    if not match.isna().iloc[0] and match.iloc[0]:
+                        try:
+                            return float(match.iloc[0])
+                        except:
+                            return None
+                    return None
+                
+                # Convertir columnas de PIB a numérico de forma robusta antes de agregar
+                pib_cols = ['pib_mun', 'pibe', 'porc_pob']
+                for col in pib_cols:
+                    if col in df_pib.columns:
+                        # Reemplazar comas por puntos
+                        df_pib[col] = df_pib[col].astype(str).str.replace(',', '.', regex=False)
+                        # Convertir a numérico primero
+                        df_pib[col] = pd.to_numeric(
+                            df_pib[col].astype(str).str.replace(',', '.'), 
+                            errors='coerce'
+                        )
+                        
+                        # Si todavía hay valores no numéricos (objeto), extraer el primer número
+                        if df_pib[col].dtype == 'object':
+                            df_pib[col] = df_pib[col].apply(extract_first_number)
+                            df_pib[col] = pd.to_numeric(df_pib[col], errors='coerce')
+                
+                # Agrupar PIB por municipio y año (promedio)
+                pib_avg = df_pib.groupby(['municipio_normalized', 'año']).agg({
+                    'pib_mun': 'mean',
+                    'pibe': 'mean',
+                    'porc_pob': 'mean'
+                }).reset_index()
+                
+                # Merge por municipio y año
+                merged = pd.merge(
+                    df_radianza,
+                    pib_avg,
+                    on=['municipio_normalized', 'año'],
+                    how='inner'
+                )
+                
+                # Si todavía no hay suficientes datos, usar solo municipio (último recurso)
+                if len(merged) < 50:
+                    # Agrupar PIB solo por municipio (promedio)
+                    pib_avg_municipio = df_pib.groupby('municipio_normalized').agg({
+                        'pib_mun': 'mean',
+                        'pibe': 'mean',
+                        'porc_pob': 'mean'
+                    }).reset_index()
+                    
+                    # Merge solo por municipio
+                    merged = pd.merge(
+                        df_radianza,
+                        pib_avg_municipio,
+                        on='municipio_normalized',
+                        how='inner'
+                    )
+            else:
+                # Si no se pueden extraer años, usar solo municipio (promedio)
+                # Función auxiliar para extraer el primer número de un string concatenado
+                def extract_first_number(value):
+                    if pd.isna(value) or value == '':
+                        return None
+                    value_str = str(value)
+                    # Buscar el primer número (puede tener decimales)
+                    match = pd.Series([value_str]).str.extract(r'^(\d+\.?\d*)', expand=False)
+                    if not match.isna().iloc[0] and match.iloc[0]:
+                        try:
+                            return float(match.iloc[0])
+                        except:
+                            return None
+                    return None
+                
+                # Convertir columnas de PIB a numérico de forma robusta antes de agregar
+                pib_cols = ['pib_mun', 'pibe', 'porc_pob']
+                for col in pib_cols:
+                    if col in df_pib.columns:
+                        # Reemplazar comas por puntos
+                        df_pib[col] = df_pib[col].astype(str).str.replace(',', '.', regex=False)
+                        # Convertir a numérico primero
+                        df_pib[col] = pd.to_numeric(
+                            df_pib[col].astype(str).str.replace(',', '.'), 
+                            errors='coerce'
+                        )
+                        
+                        # Si todavía hay valores no numéricos (objeto), extraer el primer número
+                        if df_pib[col].dtype == 'object':
+                            df_pib[col] = df_pib[col].apply(extract_first_number)
+                            df_pib[col] = pd.to_numeric(df_pib[col], errors='coerce')
+                
+                # Agrupar PIB por municipio (promedio)
+                pib_avg = df_pib.groupby('municipio_normalized').agg({
+                    'pib_mun': 'mean',
+                    'pibe': 'mean',
+                    'porc_pob': 'mean'
+                }).reset_index()
+                
+                # Merge solo por municipio
+                merged = pd.merge(
+                    df_radianza,
+                    pib_avg,
+                    on='municipio_normalized',
+                    how='inner'
+                )
         
         # Seleccionar columnas relevantes
         result_columns = []
@@ -967,8 +1076,18 @@ def get_combined_data():
             result_columns.append('Municipio')
         elif 'municipio' in merged.columns:
             result_columns.append('municipio')
-        if 'Media_de_radianza' in merged.columns:
-            result_columns.append('Media_de_radianza')
+        
+        # Incluir todas las métricas de radianza disponibles
+        radianza_metrics = [
+            'Media_de_radianza', 'Maximo_de_radianza', 'Minimo_de_radianza',
+            'Suma_de_radianza', 'Desviacion_estandar_de_radianza',
+            'Percentil_25_de_radianza', 'Percentil_50_de_radianza', 'Percentil_75_de_radianza',
+            'Cantidad_de_pixeles'
+        ]
+        for metric in radianza_metrics:
+            if metric in merged.columns:
+                result_columns.append(metric)
+        
         if 'pib_mun' in merged.columns:
             result_columns.append('pib_mun')
         if 'pibe' in merged.columns:
