@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import axios from 'axios';
 import {
   BarChart,
@@ -158,9 +158,215 @@ const Dashboard = () => {
     });
   }, [municipioData, dateRange]);
 
-  const handleDateRangeChange = (range) => {
+  const handleDateRangeChange = useCallback((range) => {
     setDateRange(range);
-  };
+  }, []);
+
+  // Determinar si usar facetas (múltiples métricas) - DEBE estar antes de returns tempranos
+  const useFacets = selectedMetricas.length > 1;
+  const multipleMunicipios = selectedMunicipios.length > 1;
+
+  // Estadísticas descriptivas para Radianza (EDA) - DEBE estar antes de returns tempranos
+  const radianzaStats = useMemo(() => {
+    if (!radianzaData || radianzaData.length === 0 || activeTab !== 'eda') return null;
+    
+    const radianzaValues = radianzaData
+      .map(d => parseFloat(d.Media_de_radianza))
+      .filter(v => !isNaN(v) && v > 0);
+    
+    if (radianzaValues.length === 0) return null;
+
+    const sorted = radianzaValues.slice().sort((a, b) => a - b);
+    const sum = radianzaValues.reduce((a, b) => a + b, 0);
+    const mean = sum / radianzaValues.length;
+    const variance = radianzaValues.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / radianzaValues.length;
+    const stdDev = Math.sqrt(variance);
+    
+    return {
+      count: radianzaValues.length,
+      mean: mean.toFixed(2),
+      median: sorted[Math.floor(sorted.length / 2)].toFixed(2),
+      stdDev: stdDev.toFixed(2),
+      min: sorted[0].toFixed(2),
+      max: sorted[sorted.length - 1].toFixed(2),
+      q1: sorted[Math.floor(sorted.length * 0.25)].toFixed(2),
+      q3: sorted[Math.floor(sorted.length * 0.75)].toFixed(2)
+    };
+  }, [radianzaData, activeTab]);
+
+  // Histograma de Radianza (EDA) - DEBE estar antes de returns tempranos
+  const radianzaHistogram = useMemo(() => {
+    if (!radianzaData || radianzaData.length === 0 || activeTab !== 'eda') return [];
+    
+    const sampleSize = Math.min(radianzaData.length, 2000);
+    const sampledData = radianzaData.length > 2000 
+      ? radianzaData.filter((_, i) => i % Math.ceil(radianzaData.length / sampleSize) === 0)
+      : radianzaData;
+    
+    const radianzaValues = sampledData
+      .map(d => parseFloat(d.Media_de_radianza))
+      .filter(v => !isNaN(v) && v > 0);
+    
+    if (radianzaValues.length === 0) return [];
+    
+    let min = Infinity;
+    let max = -Infinity;
+    for (let i = 0; i < radianzaValues.length; i++) {
+      const val = radianzaValues[i];
+      if (val < min) min = val;
+      if (val > max) max = val;
+    }
+    
+    const bins = 20;
+    const binWidth = (max - min) / bins;
+    
+    const histogram = Array(bins).fill(0).map((_, i) => ({
+      range: `${(min + i * binWidth).toFixed(0)} - ${(min + (i + 1) * binWidth).toFixed(0)}`,
+      count: 0,
+      mid: min + (i + 0.5) * binWidth
+    }));
+    
+    radianzaValues.forEach(val => {
+      const binIndex = Math.min(Math.floor((val - min) / binWidth), bins - 1);
+      histogram[binIndex].count++;
+    });
+    
+    return histogram;
+  }, [radianzaData, activeTab]);
+
+  // Serie temporal de Radianza (EDA) - DEBE estar antes de returns tempranos
+  const radianzaTimeSeries = useMemo(() => {
+    if (!radianzaData || radianzaData.length === 0 || activeTab !== 'eda') return [];
+    
+    const grouped = new Map();
+    for (let i = 0; i < radianzaData.length; i++) {
+      const d = radianzaData[i];
+      const fecha = d.Fecha?.split('T')[0] || d.Fecha;
+      const radianza = parseFloat(d.Media_de_radianza);
+      if (fecha && !isNaN(radianza) && radianza > 0) {
+        const existing = grouped.get(fecha);
+        if (existing) {
+          existing.sum += radianza;
+          existing.count += 1;
+        } else {
+          grouped.set(fecha, { fecha, sum: radianza, count: 1 });
+        }
+      }
+    }
+    
+    return Array.from(grouped.values())
+      .map(d => ({ fecha: d.fecha, promedio: d.sum / d.count }))
+      .sort((a, b) => a.fecha.localeCompare(b.fecha));
+  }, [radianzaData, activeTab]);
+
+  // Suma de Radianza por Año y Municipio (EDA) - DEBE estar antes de returns tempranos
+  const sumaRadianzaPorAnioMunicipio = useMemo(() => {
+    if (!radianzaData || radianzaData.length === 0 || activeTab !== 'eda') return { chartData: [], municipios: [] };
+    
+    const grouped = new Map();
+    const municipiosSet = new Set();
+    
+    for (let i = 0; i < radianzaData.length; i++) {
+      const d = radianzaData[i];
+      const fecha = d.Fecha?.split('T')[0] || d.Fecha || d.fecha;
+      const municipio = (d.Municipio || d.municipio || '').toString().trim();
+      const sumaRadianza = parseFloat(d.Suma_de_radianza);
+      
+      if (fecha && municipio && !isNaN(sumaRadianza) && sumaRadianza > 0) {
+        const yearMatch = fecha.toString().match(/(\d{4})/);
+        let year = yearMatch ? parseInt(yearMatch[1]) : null;
+        
+        if (!year || year < 2000 || year > 2100) {
+          try {
+            const dateObj = new Date(fecha);
+            if (!isNaN(dateObj.getTime())) {
+              year = dateObj.getFullYear();
+            }
+          } catch (e) {}
+        }
+        
+        if (year && !isNaN(year) && year >= 2000 && year <= 2100) {
+          municipiosSet.add(municipio);
+          const key = `${year}-${municipio}`;
+          const existing = grouped.get(key);
+          if (existing) {
+            existing.suma += sumaRadianza;
+          } else {
+            grouped.set(key, { año: year, municipio, suma: sumaRadianza });
+          }
+        }
+      }
+    }
+    
+    const municipios = Array.from(municipiosSet).sort();
+    const años = [...new Set(Array.from(grouped.values()).map(d => d.año))].sort((a, b) => a - b);
+    
+    const chartData = años.map(año => {
+      const dataPoint = { año };
+      municipios.forEach(municipio => {
+        const key = `${año}-${municipio}`;
+        const item = grouped.get(key);
+        dataPoint[municipio] = item ? item.suma : null;
+      });
+      return dataPoint;
+    });
+    
+    return { chartData, municipios };
+  }, [radianzaData, activeTab]);
+
+  // Box Plot Data (EDA) - DEBE estar antes de returns tempranos
+  const boxPlotData = useMemo(() => {
+    if (!radianzaDataAll || radianzaDataAll.length === 0 || activeTab !== 'eda') return [];
+    
+    const groupedByMunicipio = {};
+    
+    for (let i = 0; i < radianzaDataAll.length; i++) {
+      const d = radianzaDataAll[i];
+      const municipio = (d.Municipio || '').toString().trim();
+      const valor = parseFloat(d[selectedMetrica]);
+      
+      if (municipio && !isNaN(valor) && valor > 0) {
+        if (!groupedByMunicipio[municipio]) {
+          groupedByMunicipio[municipio] = [];
+        }
+        groupedByMunicipio[municipio].push(valor);
+      }
+    }
+    
+    const boxPlotStats = Object.keys(groupedByMunicipio).map(municipio => {
+      const values = groupedByMunicipio[municipio].sort((a, b) => a - b);
+      const n = values.length;
+      
+      if (n === 0) return null;
+      
+      const min = values[0];
+      const max = values[n - 1];
+      const q1 = values[Math.floor(n * 0.25)];
+      const median = values[Math.floor(n * 0.5)];
+      const q3 = values[Math.floor(n * 0.75)];
+      
+      const iqr = q3 - q1;
+      const lowerBound = q1 - 1.5 * iqr;
+      const upperBound = q3 + 1.5 * iqr;
+      
+      const outliers = values.filter(v => v < lowerBound || v > upperBound);
+      const whiskerMin = Math.max(min, lowerBound);
+      const whiskerMax = Math.min(max, upperBound);
+      
+      return {
+        municipio,
+        min: whiskerMin,
+        q1,
+        median,
+        q3,
+        max: whiskerMax,
+        outliers,
+        count: n
+      };
+    }).filter(Boolean).sort((a, b) => b.median - a.median);
+    
+    return boxPlotStats;
+  }, [radianzaDataAll, selectedMetrica, activeTab]);
 
   const loadEdaData = async () => {
     try {
@@ -254,6 +460,14 @@ const Dashboard = () => {
     }
   };
 
+  if (loading) {
+    return (
+      <div className="dashboard-container">
+        <div className="loading">Cargando datos...</div>
+      </div>
+    );
+  }
+
   if (error) {
     return (
       <div className="dashboard-container">
@@ -262,306 +476,80 @@ const Dashboard = () => {
     );
   }
 
-  if (loading && municipios.length === 0) {
-    return (
-      <div className="dashboard-container">
-        <div className="loading">Cargando datos...</div>
-      </div>
-    );
-  }
-
-  // Determinar si usar facetas (múltiples métricas)
-  const useFacets = selectedMetricas.length > 1;
-  const multipleMunicipios = selectedMunicipios.length > 1;
-
-  // Estadísticas descriptivas para Radianza (EDA)
-  const radianzaStats = useMemo(() => {
-    if (!radianzaData || radianzaData.length === 0 || activeTab !== 'eda') return null;
-    
-    const radianzaValues = radianzaData
-      .map(d => parseFloat(d.Media_de_radianza))
-      .filter(v => !isNaN(v) && v > 0);
-    
-    if (radianzaValues.length === 0) return null;
-
-    const sorted = radianzaValues.slice().sort((a, b) => a - b);
-    const sum = radianzaValues.reduce((a, b) => a + b, 0);
-    const mean = sum / radianzaValues.length;
-    const variance = radianzaValues.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / radianzaValues.length;
-    const stdDev = Math.sqrt(variance);
-    
-    return {
-      count: radianzaValues.length,
-      mean: mean.toFixed(2),
-      median: sorted[Math.floor(sorted.length / 2)].toFixed(2),
-      stdDev: stdDev.toFixed(2),
-      min: sorted[0].toFixed(2),
-      max: sorted[sorted.length - 1].toFixed(2),
-      q1: sorted[Math.floor(sorted.length * 0.25)].toFixed(2),
-      q3: sorted[Math.floor(sorted.length * 0.75)].toFixed(2)
-    };
-  }, [radianzaData, activeTab]);
-
-  // Histograma de Radianza (EDA)
-  const radianzaHistogram = useMemo(() => {
-    if (!radianzaData || radianzaData.length === 0 || activeTab !== 'eda') return [];
-    
-    const sampleSize = Math.min(radianzaData.length, 2000);
-    const sampledData = radianzaData.length > 2000 
-      ? radianzaData.filter((_, i) => i % Math.ceil(radianzaData.length / sampleSize) === 0)
-      : radianzaData;
-    
-    const radianzaValues = sampledData
-      .map(d => parseFloat(d.Media_de_radianza))
-      .filter(v => !isNaN(v) && v > 0);
-    
-    if (radianzaValues.length === 0) return [];
-    
-    let min = Infinity;
-    let max = -Infinity;
-    for (let i = 0; i < radianzaValues.length; i++) {
-      const val = radianzaValues[i];
-      if (val < min) min = val;
-      if (val > max) max = val;
-    }
-    
-    const bins = 20;
-    const binWidth = (max - min) / bins;
-    
-    const histogram = Array(bins).fill(0).map((_, i) => ({
-      range: `${(min + i * binWidth).toFixed(0)} - ${(min + (i + 1) * binWidth).toFixed(0)}`,
-      count: 0,
-      mid: min + (i + 0.5) * binWidth
-    }));
-    
-    radianzaValues.forEach(val => {
-      const binIndex = Math.min(Math.floor((val - min) / binWidth), bins - 1);
-      histogram[binIndex].count++;
-    });
-    
-    return histogram;
-  }, [radianzaData, activeTab]);
-
-  // Serie temporal de Radianza (EDA)
-  const radianzaTimeSeries = useMemo(() => {
-    if (!radianzaData || radianzaData.length === 0 || activeTab !== 'eda') return [];
-    
-    const grouped = new Map();
-    for (let i = 0; i < radianzaData.length; i++) {
-      const d = radianzaData[i];
-      const fecha = d.Fecha?.split('T')[0] || d.Fecha;
-      const radianza = parseFloat(d.Media_de_radianza);
-      if (fecha && !isNaN(radianza) && radianza > 0) {
-        const existing = grouped.get(fecha);
-        if (existing) {
-          existing.sum += radianza;
-          existing.count += 1;
-        } else {
-          grouped.set(fecha, { fecha, sum: radianza, count: 1 });
-        }
-      }
-    }
-    
-    return Array.from(grouped.values())
-      .map(d => ({ fecha: d.fecha, promedio: d.sum / d.count }))
-      .sort((a, b) => a.fecha.localeCompare(b.fecha));
-  }, [radianzaData, activeTab]);
-
-  // Suma de Radianza por Año y Municipio (EDA)
-  const sumaRadianzaPorAnioMunicipio = useMemo(() => {
-    if (!radianzaData || radianzaData.length === 0 || activeTab !== 'eda') return { chartData: [], municipios: [] };
-    
-    const grouped = new Map();
-    const municipiosSet = new Set();
-    
-    for (let i = 0; i < radianzaData.length; i++) {
-      const d = radianzaData[i];
-      const fecha = d.Fecha?.split('T')[0] || d.Fecha || d.fecha;
-      const municipio = (d.Municipio || d.municipio || '').toString().trim();
-      const sumaRadianza = parseFloat(d.Suma_de_radianza);
-      
-      if (fecha && municipio && !isNaN(sumaRadianza) && sumaRadianza > 0) {
-        const yearMatch = fecha.toString().match(/(\d{4})/);
-        let year = yearMatch ? parseInt(yearMatch[1]) : null;
-        
-        if (!year || year < 2000 || year > 2100) {
-          try {
-            const dateObj = new Date(fecha);
-            if (!isNaN(dateObj.getTime())) {
-              year = dateObj.getFullYear();
-            }
-          } catch (e) {}
-        }
-        
-        if (year && !isNaN(year) && year >= 2000 && year <= 2100) {
-          municipiosSet.add(municipio);
-          const key = `${year}-${municipio}`;
-          const existing = grouped.get(key);
-          if (existing) {
-            existing.suma += sumaRadianza;
-          } else {
-            grouped.set(key, { año: year, municipio, suma: sumaRadianza });
-          }
-        }
-      }
-    }
-    
-    const municipios = Array.from(municipiosSet).sort();
-    const años = [...new Set(Array.from(grouped.values()).map(d => d.año))].sort((a, b) => a - b);
-    
-    const chartData = años.map(año => {
-      const dataPoint = { año };
-      municipios.forEach(municipio => {
-        const key = `${año}-${municipio}`;
-        const item = grouped.get(key);
-        dataPoint[municipio] = item ? item.suma : null;
-      });
-      return dataPoint;
-    });
-    
-    return { chartData, municipios };
-  }, [radianzaData, activeTab]);
-
-  // Box Plot Data (EDA)
-  const boxPlotData = useMemo(() => {
-    if (!radianzaDataAll || radianzaDataAll.length === 0 || activeTab !== 'eda') return [];
-    
-    const groupedByMunicipio = {};
-    
-    for (let i = 0; i < radianzaDataAll.length; i++) {
-      const d = radianzaDataAll[i];
-      const municipio = (d.Municipio || '').toString().trim();
-      const valor = parseFloat(d[selectedMetrica]);
-      
-      if (municipio && !isNaN(valor) && valor > 0) {
-        if (!groupedByMunicipio[municipio]) {
-          groupedByMunicipio[municipio] = [];
-        }
-        groupedByMunicipio[municipio].push(valor);
-      }
-    }
-    
-    const boxPlotStats = Object.keys(groupedByMunicipio).map(municipio => {
-      const values = groupedByMunicipio[municipio].sort((a, b) => a - b);
-      const n = values.length;
-      
-      if (n === 0) return null;
-      
-      const min = values[0];
-      const max = values[n - 1];
-      const q1 = values[Math.floor(n * 0.25)];
-      const median = values[Math.floor(n * 0.5)];
-      const q3 = values[Math.floor(n * 0.75)];
-      
-      const iqr = q3 - q1;
-      const lowerBound = q1 - 1.5 * iqr;
-      const upperBound = q3 + 1.5 * iqr;
-      
-      const outliers = values.filter(v => v < lowerBound || v > upperBound);
-      const whiskerMin = Math.max(min, lowerBound);
-      const whiskerMax = Math.min(max, upperBound);
-      
-      return {
-        municipio,
-        min: whiskerMin,
-        q1,
-        median,
-        q3,
-        max: whiskerMax,
-        outliers,
-        count: n
-      };
-    }).filter(Boolean).sort((a, b) => b.median - a.median);
-    
-    return boxPlotStats;
-  }, [radianzaDataAll, selectedMetrica, activeTab]);
-
   return (
     <div className="dashboard-container">
-      {municipios.length === 0 && !loading && (
-        <div className="loading">No hay municipios disponibles. Verifica la conexión con el backend.</div>
-      )}
-      
-      {municipios.length > 0 && (
-        <>
-          <div className="eda-tabs">
-            <button
-              className={`eda-tab ${activeTab === 'visualizacion' ? 'active' : ''}`}
-              onClick={() => setActiveTab('visualizacion')}
-            >
-              Visualización
-            </button>
-            <button
-              className={`eda-tab ${activeTab === 'eda' ? 'active' : ''}`}
-              onClick={() => setActiveTab('eda')}
-            >
-              EDA
-            </button>
-          </div>
+      <div className="eda-tabs">
+        <button
+          className={`eda-tab ${activeTab === 'visualizacion' ? 'active' : ''}`}
+          onClick={() => setActiveTab('visualizacion')}
+        >
+          Visualización
+        </button>
+        <button
+          className={`eda-tab ${activeTab === 'eda' ? 'active' : ''}`}
+          onClick={() => setActiveTab('eda')}
+        >
+          EDA
+        </button>
+      </div>
 
-      {municipios.length > 0 && (
-        <div className="dashboard-controls">
-          <div className="controls-row">
-            <MultiMunicipioSelector
-              municipios={municipios}
-              selectedMunicipios={selectedMunicipios}
-              onSelectMunicipios={setSelectedMunicipios}
+      <div className="dashboard-controls">
+        <div className="controls-row">
+          <MultiMunicipioSelector
+            municipios={municipios}
+            selectedMunicipios={selectedMunicipios}
+            onSelectMunicipios={setSelectedMunicipios}
+          />
+          {activeTab === 'visualizacion' ? (
+            <>
+              <MultiMetricaSelector
+                selectedMetricas={selectedMetricas}
+                onSelectMetricas={setSelectedMetricas}
+              />
+              <YearSelector
+                years={years}
+                selectedYear={selectedYear}
+                onSelectYear={setSelectedYear}
+              />
+            </>
+          ) : (
+            <MetricaSelector
+              selectedMetrica={selectedMetrica}
+              onSelectMetrica={setSelectedMetrica}
             />
-            {activeTab === 'visualizacion' ? (
-              <>
-                <MultiMetricaSelector
-                  selectedMetricas={selectedMetricas}
-                  onSelectMetricas={setSelectedMetricas}
-                />
-                <YearSelector
-                  years={years}
-                  selectedYear={selectedYear}
-                  onSelectYear={setSelectedYear}
-                />
-              </>
-            ) : (
-              <MetricaSelector
-                selectedMetrica={selectedMetrica}
-                onSelectMetrica={setSelectedMetrica}
-              />
-            )}
-          </div>
-          {activeTab === 'visualizacion' && municipioData.length > 0 && (
-            <div className="date-range-control">
-              <DateRangeSlider 
-                data={municipioData} 
-                onRangeChange={handleDateRangeChange}
-              />
-            </div>
-          )}
-          {activeTab === 'visualizacion' && (
-            <div className="chart-controls">
-              <button 
-                className={`toggle-markers-btn ${showMarkers ? 'active' : ''}`}
-                onClick={() => setShowMarkers(!showMarkers)}
-                title={showMarkers ? 'Ocultar markers' : 'Mostrar markers'}
-              >
-                {showMarkers ? '●' : '○'} {showMarkers ? 'Ocultar Markers' : 'Mostrar Markers'}
-              </button>
-              <button 
-                className="download-btn"
-                onClick={handleDownloadData}
-                title="Descargar datos filtrados como CSV"
-              >
-                ⬇ Descargar Datos
-              </button>
-            </div>
           )}
         </div>
-      )}
+        {activeTab === 'visualizacion' && municipioData.length > 0 && (
+          <div className="date-range-control">
+            <DateRangeSlider 
+              data={municipioData} 
+              onRangeChange={handleDateRangeChange}
+            />
+          </div>
+        )}
+        {activeTab === 'visualizacion' && (
+          <div className="chart-controls">
+            <button 
+              className={`toggle-markers-btn ${showMarkers ? 'active' : ''}`}
+              onClick={() => setShowMarkers(!showMarkers)}
+              title={showMarkers ? 'Ocultar markers' : 'Mostrar markers'}
+            >
+              {showMarkers ? '●' : '○'} {showMarkers ? 'Ocultar Markers' : 'Mostrar Markers'}
+            </button>
+            <button 
+              className="download-btn"
+              onClick={handleDownloadData}
+              title="Descargar datos filtrados como CSV"
+            >
+              ⬇ Descargar Datos
+            </button>
+          </div>
+        )}
+      </div>
 
       {activeTab === 'visualizacion' && (
         <div className="charts-grid">
-        {municipioData.length === 0 ? (
-          <div className="chart-card">
-            <div className="no-data">No hay datos disponibles. Selecciona un municipio y año para ver los gráficos.</div>
-          </div>
-        ) : useFacets ? (
+        {useFacets ? (
           // Facetas: un gráfico por métrica
           selectedMetricas.map((metrica) => {
             const metricaLabel = METRICAS.find(m => m.value === metrica)?.label || metrica;
@@ -612,14 +600,6 @@ const Dashboard = () => {
               </span>
             )}
           </h2>
-          
-          {loading && !edaDataLoaded && (
-            <div className="loading">Cargando datos para análisis exploratorio...</div>
-          )}
-          
-          {!loading && radianzaData.length === 0 && edaDataLoaded && (
-            <div className="no-data">No hay datos disponibles para el análisis exploratorio.</div>
-          )}
           
           {radianzaStats && (
             <div className="stats-card">
@@ -752,8 +732,6 @@ const Dashboard = () => {
             </ResponsiveContainer>
           </div>
         </div>
-        )}
-        </>
       )}
     </div>
   );

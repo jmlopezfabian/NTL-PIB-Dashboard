@@ -31,7 +31,8 @@ const DateRangeSlider = ({ data, onRangeChange }) => {
         endDate: dates[maxIndex]
       });
     }
-  }, [minIndex, maxIndex, dates, onRangeChange]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [minIndex, maxIndex, dates]);
 
   const handleMinChange = (e) => {
     const newMin = parseInt(e.target.value);
