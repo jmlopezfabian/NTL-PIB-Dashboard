@@ -35,6 +35,15 @@ const COLORS = [
   '#16a085',  '#d35400',  '#2980b9',  '#8e44ad',  '#27ae60'
 ];
 
+// Formateo numérico compacto para ejes
+const formatAxisNumber = (value) => {
+  if (value === null || value === undefined) return '';
+  const rounded = Math.round(value / 10) * 10; // ticks terminan en 0
+  if (Math.abs(rounded) >= 1_000_000) return `${(rounded / 1_000_000).toFixed(1)}M`;
+  if (Math.abs(rounded) >= 1_000) return `${(rounded / 1_000).toFixed(0)}K`;
+  return rounded.toFixed(0);
+};
+
 const Dashboard = () => {
   const [activeTab, setActiveTab] = useState('visualizacion'); // 'visualizacion' o 'eda'
   const [municipios, setMunicipios] = useState([]);
@@ -215,45 +224,52 @@ const Dashboard = () => {
     };
   }, [radianzaData, activeTab]);
 
-  // Histograma de Radianza (EDA) - DEBE estar antes de returns tempranos
-  const radianzaHistogram = useMemo(() => {
-    if (!radianzaData || radianzaData.length === 0 || activeTab !== 'eda') return [];
+  // Histograma de Radianza (EDA) - general, estilo PIB
+  const radianzaHistogramResult = useMemo(() => {
+    if (!radianzaData || radianzaData.length === 0 || activeTab !== 'eda') return { data: [], min: 0, max: 0 };
     
-    const sampledData = radianzaData;
-    
-    const radianzaValues = sampledData
+    const selected = selectedMunicipios.length > 0 ? selectedMunicipios : municipios;
+    if (!selected || selected.length === 0) return { data: [], min: 0, max: 0 };
+
+    const values = radianzaData
+      .filter(d => selected.includes((d.Municipio || d.municipio || '').toString()))
       .map(d => parseFloat(d[selectedMetrica]))
       .filter(v => !isNaN(v) && v > 0);
-    
-    if (radianzaValues.length === 0) return [];
-    
+
+    if (values.length === 0) return { data: [], min: 0, max: 0 };
+
     let min = Infinity;
     let max = -Infinity;
-    for (let i = 0; i < radianzaValues.length; i++) {
-      const val = radianzaValues[i];
+    for (let i = 0; i < values.length; i++) {
+      const val = values[i];
       if (val < min) min = val;
       if (val > max) max = val;
     }
-    
-    // Más barras (50 bins)
-    const bins = 50;
-    const binWidth = (max - min) / bins;
-    
-    const histogram = Array(bins).fill(0).map((_, i) => ({
-      bin: i + 1,
-      count: 0,
-      mid: min + (i + 0.5) * binWidth,
-      min: min + i * binWidth,
-      max: min + (i + 1) * binWidth
-    }));
-    
-    radianzaValues.forEach(val => {
-      const binIndex = Math.min(Math.floor((val - min) / binWidth), bins - 1);
+
+    const bins = 30; // igual que PIB
+    const range = max - min;
+    const binWidth = range === 0 ? 1 : range / bins;
+
+    const histogram = Array(bins).fill(0).map((_, i) => {
+      const binMin = min + i * binWidth;
+      const binMax = min + (i + 1) * binWidth;
+      return {
+        bin: i + 1,
+        count: 0,
+        mid: binMin + binWidth / 2,
+        min: binMin,
+        max: binMax,
+        range: `${formatAxisNumber(binMin)} - ${formatAxisNumber(binMax)}`
+      };
+    });
+
+    values.forEach(val => {
+      const binIndex = range === 0 ? 0 : Math.min(Math.floor((val - min) / binWidth), bins - 1);
       histogram[binIndex].count++;
     });
-    
-    return histogram;
-  }, [radianzaData, activeTab, selectedMetrica]);
+
+    return { data: histogram, min, max };
+  }, [radianzaData, activeTab, selectedMetrica, selectedMunicipios, municipios]);
 
 
   // Suma de Radianza por Año y Municipio (EDA) - DEBE estar antes de returns tempranos
@@ -740,40 +756,34 @@ const Dashboard = () => {
         <div className="chart-card">
             <h3>Distribución de {METRICAS.find(m => m.value === selectedMetrica)?.label || selectedMetrica} (Histograma)</h3>
             <ResponsiveContainer width="100%" height={400}>
-              <BarChart data={radianzaHistogram}>
+              <BarChart data={radianzaHistogramResult.data} barCategoryGap={0} margin={{ top: 10, right: 20, left: 10, bottom: 60 }}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis 
-                  dataKey="mid" 
                   type="number"
-                  scale="linear"
-                  domain={['dataMin', 'dataMax']}
-                  tick={false}
-                  label={{ 
-                    value: METRICAS.find(m => m.value === selectedMetrica)?.label || selectedMetrica, 
-                    position: 'insideBottom', 
-                    offset: -5 
-                  }}
+                  dataKey="mid"
+                  domain={[radianzaHistogramResult.min, radianzaHistogramResult.max]}
+                  tickFormatter={formatAxisNumber}
+                  tickCount={10}
+                  tick={{ fontSize: 12 }}
+                  height={60}
                 />
-                <YAxis 
-                  label={{ value: 'Frecuencia', angle: -90, position: 'insideLeft' }}
-                />
+                <YAxis />
                 <Tooltip 
-                  formatter={(value, name) => [`${value}`, 'Frecuencia']}
-                  labelFormatter={(label, payload) => {
-                    if (payload && payload[0] && payload[0].payload) {
-                      const data = payload[0].payload;
-                      return `Rango: ${data.min.toFixed(2)} - ${data.max.toFixed(2)}`;
-                    }
+                  formatter={(value) => [value, 'Frecuencia']}
+                  labelFormatter={(_, payload) => {
+                    const p = payload && payload[0] && payload[0].payload;
+                    if (p) return `Rango: ${formatAxisNumber(p.min)} - ${formatAxisNumber(p.max)}`;
                     return '';
                   }}
-                  contentStyle={{
-                    backgroundColor: '#ffffff',
-                    border: '1px solid rgba(0, 0, 0, 0.1)',
-                    borderRadius: '8px',
-                    padding: '10px'
-                  }}
                 />
-                <Bar dataKey="count" fill="#764ba2" />
+                <Bar
+                  dataKey="count"
+                  name="Frecuencia"
+                  fill="#764ba2"
+                  fillOpacity={0.35}
+                  stroke="#764ba2"
+                  strokeWidth={1}
+                />
               </BarChart>
             </ResponsiveContainer>
           </div>

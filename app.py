@@ -50,37 +50,98 @@ _CACHED_AT = 0.0
 _CACHED_PIB_DF = None
 _CACHED_PIB_AT = 0.0
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, "Data")
+
+# Flags para forzar local y evitar reintentos constantes
+FORCE_LOCAL_DATA = os.getenv("FORCE_LOCAL_DATA", "").lower() == "true"
+_AZURE_RADIANCE_FAILED = False
+_AZURE_PIB_FAILED = False
+
+
+def _load_local_csv(filename: str, date_cols=None, str_cols=None, numeric_cols=None):
+    """
+    Carga un CSV local desde la carpeta Data con normalización mínima.
+    """
+    filepath = os.path.join(DATA_DIR, filename)
+    if not os.path.exists(filepath):
+        raise FileNotFoundError(f"No se encontró el archivo local: {filepath}")
+
+    df = pd.read_csv(filepath)
+
+    # Convertir fechas si se indican
+    if date_cols:
+        for col in date_cols:
+            if col in df.columns:
+                try:
+                    df[col] = pd.to_datetime(df[col])
+                except Exception:
+                    # Si no se puede parsear, dejar como string
+                    pass
+
+    # Forzar columnas de texto
+    if str_cols:
+        for col in str_cols:
+            if col in df.columns:
+                df[col] = df[col].astype(str)
+
+    # Normalizar columnas numéricas (comas como separador decimal)
+    if numeric_cols:
+        for col in numeric_cols:
+            if col in df.columns:
+                df[col] = (
+                    df[col]
+                    .astype(str)
+                    .str.replace(",", ".", regex=False)
+                    .astype(float, errors="ignore")
+                )
+
+    return df
+
 def get_blob_data():
     """Obtiene los datos del blob storage y los convierte a DataFrame"""
     try:
-        # Validar que las credenciales estén configuradas
-        if not STORAGE_ACCOUNT_KEY:
-            raise ValueError(
-                "STORAGE_ACCOUNT_KEY no está configurada. "
-                "Por favor, configúrala como variable de entorno."
-            )
-        
-        global _CACHED_DF, _CACHED_AT
+        global _CACHED_DF, _CACHED_AT, _AZURE_RADIANCE_FAILED
         now = time.time()
         if _CACHED_DF is not None and (now - _CACHED_AT) < _CACHE_TTL_SECONDS:
             return _CACHED_DF
 
-        blob_service_client = BlobServiceClient.from_connection_string(CONNECTION_STRING)
-        print(f"Blob name: {BLOB_NAME}")
-        blob_client = blob_service_client.get_blob_client(container=CONTAINER_NAME, blob=BLOB_NAME)
-        
-        stream = blob_client.download_blob()
-        data = stream.readall().decode('utf-8')
-        
-        df = pd.read_csv(StringIO(data))
-        
+        # Usar local directo si se fuerza o si Azure ya falló
+        use_local = FORCE_LOCAL_DATA or _AZURE_RADIANCE_FAILED or not STORAGE_ACCOUNT_KEY
+
+        if not use_local and STORAGE_ACCOUNT_KEY:
+            try:
+                blob_service_client = BlobServiceClient.from_connection_string(CONNECTION_STRING)
+                print(f"Blob name: {BLOB_NAME}")
+                blob_client = blob_service_client.get_blob_client(container=CONTAINER_NAME, blob=BLOB_NAME)
+                
+                # Timeout corto para fallback rápido en entornos sin red
+                stream = blob_client.download_blob(timeout=5)
+                data = stream.readall().decode('utf-8')
+                
+                df = pd.read_csv(StringIO(data))
+            except Exception as azure_err:
+                print(f"Advertencia: no se pudo obtener datos de Azure, usando archivo local. Detalle: {azure_err}")
+                _AZURE_RADIANCE_FAILED = True
+                df = _load_local_csv(
+                    "municipios_completos_limpio.csv",
+                    date_cols=["Fecha"],
+                    str_cols=["Municipio"]
+                )
+        else:
+            if not _AZURE_RADIANCE_FAILED:
+                print("Usando datos locales de Data/municipios_completos_limpio.csv")
+            df = _load_local_csv(
+                "municipios_completos_limpio.csv",
+                date_cols=["Fecha"],
+                str_cols=["Municipio"]
+            )
+
         # Asegurar que las columnas de fecha se manejen correctamente
-        if 'Fecha' in df.columns:
-            # Intentar convertir a datetime, pero mantener como string si falla
+        if 'Fecha' in df.columns and not pd.api.types.is_datetime64_any_dtype(df['Fecha']):
             try:
                 df['Fecha'] = pd.to_datetime(df['Fecha'])
             except Exception:
-                # Mantener como string si falla
                 pass
 
         # Normalización ligera
@@ -92,36 +153,53 @@ def get_blob_data():
         return _CACHED_DF
     except Exception as e:
         import traceback
-        error_msg = f"Error al obtener datos del blob: {str(e)}\n{traceback.format_exc()}"
+        error_msg = f"Error al obtener datos del blob o archivo local: {str(e)}\n{traceback.format_exc()}"
         print(error_msg)
         raise Exception(error_msg)
 
 def get_pib_data():
     """Obtiene los datos de PIB del blob storage y los convierte a DataFrame"""
     try:
-        # Validar que las credenciales estén configuradas
-        if not STORAGE_ACCOUNT_KEY:
-            raise ValueError(
-                "STORAGE_ACCOUNT_KEY no está configurada. "
-                "Por favor, configúrala como variable de entorno."
-            )
-        
-        global _CACHED_PIB_DF, _CACHED_PIB_AT
+        global _CACHED_PIB_DF, _CACHED_PIB_AT, _AZURE_PIB_FAILED
         now = time.time()
         if _CACHED_PIB_DF is not None and (now - _CACHED_PIB_AT) < _CACHE_TTL_SECONDS:
             return _CACHED_PIB_DF
 
-        blob_service_client = BlobServiceClient.from_connection_string(CONNECTION_STRING)
-        print(f"Blob name PIB: {BLOB_NAME_PIB}")
-        blob_client = blob_service_client.get_blob_client(container=CONTAINER_NAME, blob=BLOB_NAME_PIB)
-        
-        stream = blob_client.download_blob()
-        data = stream.readall().decode('utf-8')
-        
-        df = pd.read_csv(StringIO(data))
-        
+        # Usar local directo si se fuerza o si Azure ya falló
+        use_local = FORCE_LOCAL_DATA or _AZURE_PIB_FAILED or not STORAGE_ACCOUNT_KEY
+
+        if not use_local and STORAGE_ACCOUNT_KEY:
+            try:
+                blob_service_client = BlobServiceClient.from_connection_string(CONNECTION_STRING)
+                print(f"Blob name PIB: {BLOB_NAME_PIB}")
+                blob_client = blob_service_client.get_blob_client(container=CONTAINER_NAME, blob=BLOB_NAME_PIB)
+                
+                # Timeout corto para fallback rápido en entornos sin red
+                stream = blob_client.download_blob(timeout=5)
+                data = stream.readall().decode('utf-8')
+                
+                df = pd.read_csv(StringIO(data))
+            except Exception as azure_err:
+                print(f"Advertencia: no se pudo obtener datos de PIB de Azure, usando archivo local. Detalle: {azure_err}")
+                _AZURE_PIB_FAILED = True
+                df = _load_local_csv(
+                    "PIB_completo.csv",
+                    date_cols=["fecha"],
+                    str_cols=["municipio", "entidad_federativa"],
+                    numeric_cols=["porc_pob", "pibe", "pib_mun"]
+                )
+        else:
+            if not _AZURE_PIB_FAILED:
+                print("Usando datos locales de Data/PIB_completo.csv")
+            df = _load_local_csv(
+                "PIB_completo.csv",
+                date_cols=["fecha"],
+                str_cols=["municipio", "entidad_federativa"],
+                numeric_cols=["porc_pob", "pibe", "pib_mun"]
+            )
+
         # Asegurar que las columnas de fecha se manejen correctamente
-        if 'fecha' in df.columns:
+        if 'fecha' in df.columns and not pd.api.types.is_datetime64_any_dtype(df['fecha']):
             try:
                 df['fecha'] = pd.to_datetime(df['fecha'])
             except Exception:
@@ -137,14 +215,19 @@ def get_pib_data():
         numeric_cols = ['porc_pob', 'pibe', 'pib_mun']
         for col in numeric_cols:
             if col in df.columns:
-                df[col] = df[col].astype(str).str.replace(',', '.').astype(float, errors='ignore')
+                df[col] = (
+                    df[col]
+                    .astype(str)
+                    .str.replace(',', '.', regex=False)
+                    .astype(float, errors='ignore')
+                )
         
         _CACHED_PIB_DF = df
         _CACHED_PIB_AT = now
         return _CACHED_PIB_DF
     except Exception as e:
         import traceback
-        error_msg = f"Error al obtener datos de PIB del blob: {str(e)}\n{traceback.format_exc()}"
+        error_msg = f"Error al obtener datos de PIB del blob o archivo local: {str(e)}\n{traceback.format_exc()}"
         print(error_msg)
         raise Exception(error_msg)
 

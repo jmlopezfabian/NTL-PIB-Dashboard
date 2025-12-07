@@ -3,8 +3,6 @@ import axios from 'axios';
 import {
   BarChart,
   Bar,
-  LineChart,
-  Line,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -16,6 +14,7 @@ import './Dashboard.css';
 import MultiMunicipioSelector from './MultiMunicipioSelector';
 import DateRangeSlider from './DateRangeSlider';
 import RadianzaChart from './RadianzaChart';
+import BoxPlot from './BoxPlot';
 
 // Usar /api en producción o variable de entorno (adaptado para Vite)
 const API_BASE_URL = import.meta.env.VITE_API_URL || 
@@ -23,6 +22,11 @@ const API_BASE_URL = import.meta.env.VITE_API_URL ||
 
 // Métrica fija: solo PIB Municipal
 const SELECTED_METRICA = 'pib_mun';
+const COLORS = [
+  '#667eea', '#764ba2', '#e74c3c', '#2ecc71', '#f39c12', '#3498db',
+  '#9b59b6', '#e67e22', '#1abc9c', '#c0392b', '#16a085', '#d35400',
+  '#2980b9', '#8e44ad', '#27ae60'
+];
 
 const PIBDashboard = () => {
   const [activeTab, setActiveTab] = useState('visualizacion'); // 'visualizacion' o 'eda'
@@ -30,11 +34,12 @@ const PIBDashboard = () => {
   const [selectedMunicipios, setSelectedMunicipios] = useState([]);
   const [municipioData, setMunicipioData] = useState([]);
   const [pibData, setPibData] = useState([]); // Para EDA
+  const [pibDataAll, setPibDataAll] = useState([]); // Todos los datos sin filtrar para box plot
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [dateRange, setDateRange] = useState(null);
+  const lastRangeRef = useRef(null); // Evitar bucles de actualización por callbacks que se disparan en cada render
   const [showMarkers, setShowMarkers] = useState(true);
-  const [edaDataLoaded, setEdaDataLoaded] = useState(false);
   const [loadingMunicipioData, setLoadingMunicipioData] = useState(false);
 
   // Ref para el timeout de debounce
@@ -124,10 +129,10 @@ const PIBDashboard = () => {
       setPibData([]);
       
       if (selectedMunicipios.length === 0) {
-        setEdaDataLoaded(true);
         return;
       }
       
+      // Cargar datos filtrados por municipios seleccionados (sin límite)
       const params = new URLSearchParams();
       selectedMunicipios.forEach(municipio => {
         params.append('municipios', municipio);
@@ -139,11 +144,14 @@ const PIBDashboard = () => {
         setPibData(response.data.data);
       }
       
-      setEdaDataLoaded(true);
+      // Cargar TODOS los datos sin filtrar para el box plot
+      const allDataResponse = await axios.get(`${API_BASE_URL}/pib/data`);
+      if (allDataResponse.data.success) {
+        setPibDataAll(allDataResponse.data.data);
+      }
     } catch (err) {
       console.error('Error cargando datos EDA:', err);
       setPibData([]);
-      setEdaDataLoaded(true);
     }
   }, [selectedMunicipios]);
 
@@ -176,16 +184,12 @@ const PIBDashboard = () => {
     };
   }, [selectedMunicipios, loadMultipleMunicipioData]);
 
-  // Cargar datos del EDA solo cuando se cambia a la pestaña EDA
+  // Cargar datos del EDA cuando cambia la pestaña o los municipios
   useEffect(() => {
     if (activeTab === 'eda' && municipios.length > 0) {
-      // Si cambian los municipios, recargar datos
-      if (edaDataLoaded) {
-        setEdaDataLoaded(false);
-      }
       loadEdaData();
     }
-  }, [activeTab, selectedMunicipios, loadEdaData, municipios.length, edaDataLoaded]);
+  }, [activeTab, selectedMunicipios, loadEdaData, municipios.length]);
 
   // Filtrar datos según el rango de fechas seleccionado
   const filteredMunicipioData = useMemo(() => {
@@ -205,7 +209,7 @@ const PIBDashboard = () => {
     });
   }, [municipioData, dateRange]);
 
-  // Estadísticas descriptivas para PIB (EDA) - DEBE estar antes de returns tempranos
+  // Estadísticas descriptivas para PIB (EDA)
   const pibStats = useMemo(() => {
     if (!pibData || pibData.length === 0 || activeTab !== 'eda') return null;
     
@@ -218,7 +222,7 @@ const PIBDashboard = () => {
     const sorted = pibValues.slice().sort((a, b) => a - b);
     const sum = pibValues.reduce((a, b) => a + b, 0);
     const mean = sum / pibValues.length;
-    const variance = pibValues.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / pibValues.length;
+    const variance = pibValues.reduce((acc, val) => acc + Math.pow(val - mean, 2), 0) / pibValues.length;
     const stdDev = Math.sqrt(variance);
     
     return {
@@ -233,18 +237,30 @@ const PIBDashboard = () => {
     };
   }, [pibData, activeTab]);
 
-  // Histograma de PIB (EDA) - DEBE estar antes de returns tempranos
-  const pibHistogram = useMemo(() => {
-    if (!pibData || pibData.length === 0 || activeTab !== 'eda') return [];
+  // Formateo compacto para ejes numéricos
+  const formatAxisNumber = (value) => {
+    if (value === null || value === undefined) return '';
+    // Redondear a la decena más cercana para terminar en 0
+    const rounded = Math.round(value / 10) * 10;
+    if (Math.abs(rounded) >= 1_000_000) return `${(rounded / 1_000_000).toFixed(1)}M`;
+    if (Math.abs(rounded) >= 1_000) return `${(rounded / 1_000).toFixed(0)}K`;
+    return rounded.toFixed(0);
+  };
+
+  // Histograma de PIB general (sin muestreo, todos los municipios seleccionados)
+  const pibHistogramResult = useMemo(() => {
+    if (!pibData || pibData.length === 0 || activeTab !== 'eda') return { data: [], min: 0, max: 0 };
     
-    const sampledData = pibData;
-    
-    const pibValues = sampledData
+    const selected = selectedMunicipios.length > 0 ? selectedMunicipios : municipios;
+    if (!selected || selected.length === 0) return { data: [], min: 0, max: 0 };
+
+    const pibValues = pibData
+      .filter(d => selected.includes((d.municipio || '').toString()))
       .map(d => parseFloat(d.pib_mun))
       .filter(v => !isNaN(v) && v > 0);
-    
-    if (pibValues.length === 0) return [];
-    
+
+    if (pibValues.length === 0) return { data: [], min: 0, max: 0 };
+
     let min = Infinity;
     let max = -Infinity;
     for (let i = 0; i < pibValues.length; i++) {
@@ -252,54 +268,96 @@ const PIBDashboard = () => {
       if (val < min) min = val;
       if (val > max) max = val;
     }
-    
-    const bins = 20;
-    const binWidth = (max - min) / bins;
-    
-    const histogram = Array(bins).fill(0).map((_, i) => ({
-      bin: i + 1,
-      count: 0,
-      mid: min + (i + 0.5) * binWidth,
-      min: min + i * binWidth,
-      max: min + (i + 1) * binWidth
-    }));
-    
+
+    const bins = 30; // bins moderados
+    const range = max - min;
+    const binWidth = range === 0 ? 1 : range / bins;
+
+    const histogram = Array(bins).fill(0).map((_, i) => {
+      const binMin = min + i * binWidth;
+      const binMax = min + (i + 1) * binWidth;
+      return {
+        bin: i + 1,
+        count: 0,
+        mid: binMin + binWidth / 2,
+        min: binMin,
+        max: binMax,
+        range: `${formatAxisNumber(binMin)} - ${formatAxisNumber(binMax)}`
+      };
+    });
+
     pibValues.forEach(val => {
-      const binIndex = Math.min(Math.floor((val - min) / binWidth), bins - 1);
+      const binIndex = range === 0 ? 0 : Math.min(Math.floor((val - min) / binWidth), bins - 1);
       histogram[binIndex].count++;
     });
-    
-    return histogram;
-  }, [pibData, activeTab]);
 
-  // Serie temporal de PIB (EDA) - DEBE estar antes de returns tempranos
-  const pibTimeSeries = useMemo(() => {
-    if (!pibData || pibData.length === 0 || activeTab !== 'eda') return [];
+    return { data: histogram, min, max };
+  }, [pibData, activeTab, selectedMunicipios, municipios]);
+
+  // Datos para Box Plot por Municipio (no afectado por filtros de municipio)
+  const boxPlotData = useMemo(() => {
+    if (!pibDataAll || pibDataAll.length === 0 || activeTab !== 'eda') return [];
     
-    const grouped = new Map();
-    for (let i = 0; i < pibData.length; i++) {
-      const d = pibData[i];
-      const fecha = d.fecha?.split('T')[0] || d.fecha;
-      const pib = parseFloat(d.pib_mun);
-      if (fecha && !isNaN(pib) && pib > 0) {
-        const existing = grouped.get(fecha);
-        if (existing) {
-          existing.sum += pib;
-          existing.count += 1;
-        } else {
-          grouped.set(fecha, { fecha, sum: pib, count: 1 });
+    // Agrupar datos por municipio
+    const groupedByMunicipio = {};
+    
+    for (let i = 0; i < pibDataAll.length; i++) {
+      const d = pibDataAll[i];
+      const municipio = (d.municipio || '').toString().trim();
+      const valor = parseFloat(d.pib_mun);
+      
+      if (municipio && !isNaN(valor) && valor > 0) {
+        if (!groupedByMunicipio[municipio]) {
+          groupedByMunicipio[municipio] = [];
         }
+        groupedByMunicipio[municipio].push(valor);
       }
     }
     
-    return Array.from(grouped.values())
-      .map(d => ({ fecha: d.fecha, promedio: d.sum / d.count }))
-      .sort((a, b) => a.fecha.localeCompare(b.fecha));
-  }, [pibData, activeTab]);
+    // Calcular estadísticas de box plot para cada municipio
+    const boxPlotStats = Object.keys(groupedByMunicipio).map(municipio => {
+      const values = groupedByMunicipio[municipio].sort((a, b) => a - b);
+      const n = values.length;
+      
+      if (n === 0) return null;
+      
+      const minVal = values[0];
+      const maxVal = values[n - 1];
+      const q1 = values[Math.floor(n * 0.25)];
+      const median = values[Math.floor(n * 0.5)];
+      const q3 = values[Math.floor(n * 0.75)];
+      
+      // Calcular IQR y detectar outliers
+      const iqr = q3 - q1;
+      const lowerBound = q1 - 1.5 * iqr;
+      const upperBound = q3 + 1.5 * iqr;
+      
+      const outliers = values.filter(v => v < lowerBound || v > upperBound);
+      const whiskerMin = Math.max(minVal, lowerBound);
+      const whiskerMax = Math.min(maxVal, upperBound);
+      
+      return {
+        municipio,
+        min: whiskerMin,
+        q1,
+        median,
+        q3,
+        max: whiskerMax,
+        outliers,
+        count: n
+      };
+    }).filter(Boolean).sort((a, b) => b.median - a.median); // Ordenar por mediana descendente
+    
+    return boxPlotStats;
+  }, [pibDataAll, activeTab]);
 
-  const handleDateRangeChange = (range) => {
+  const handleDateRangeChange = useCallback((range) => {
+    // Normalizar clave para comparar y evitar setState repetidos
+    const key = range ? `${range.startDate || ''}|${range.endDate || ''}` : '';
+    if (lastRangeRef.current === key) return;
+    lastRangeRef.current = key;
     setDateRange(range);
-  };
+  }, []);
 
   const handleDownloadData = async () => {
     try {
@@ -458,6 +516,53 @@ const PIBDashboard = () => {
             )}
           </h2>
           
+          <div className="chart-card">
+            <h3>Distribución de PIB (Histograma)</h3>
+            <ResponsiveContainer width="100%" height={400}>
+              <BarChart data={pibHistogramResult.data} barCategoryGap={0} margin={{ top: 10, right: 20, left: 10, bottom: 60 }}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis 
+                  type="number"
+                  dataKey="mid"
+                  domain={[pibHistogramResult.min, pibHistogramResult.max]}
+                  tickFormatter={formatAxisNumber}
+                  tickCount={10}
+                  tick={{ fontSize: 12 }}
+                  height={60}
+                />
+                <YAxis />
+                <Tooltip 
+                  formatter={(value, name) => [value, name]}
+                  labelFormatter={(_, payload) => {
+                    const p = payload && payload[0] && payload[0].payload;
+                    if (p) return `Rango: ${formatAxisNumber(p.min)} - ${formatAxisNumber(p.max)}`;
+                    return '';
+                  }}
+                />
+                <Bar
+                  dataKey="count"
+                  name="Frecuencia"
+                  fill={COLORS[0]}
+                  fillOpacity={0.35}
+                  stroke={COLORS[0]}
+                  strokeWidth={1}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div className="chart-card">
+            <h3>Distribución de PIB Municipal por Municipio</h3>
+            <p className="chart-subtitle" style={{ fontStyle: 'italic', color: '#666', marginBottom: '1rem' }}>
+              (No afectado por filtros de municipio)
+            </p>
+            <BoxPlot 
+              data={boxPlotData}
+              yAxisLabel="PIB Municipal"
+              height={Math.max(500, boxPlotData.length * 40)}
+            />
+          </div>
+
           {pibStats && (
             <div className="stats-card">
               <h3>Estadísticas Descriptivas</h3>
@@ -497,33 +602,6 @@ const PIBDashboard = () => {
               </div>
             </div>
           )}
-
-          <div className="chart-card">
-            <h3>Distribución de PIB (Histograma)</h3>
-            <ResponsiveContainer width="100%" height={400}>
-              <BarChart data={pibHistogram}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="range" angle={-45} textAnchor="end" height={100} />
-                <YAxis />
-                <Tooltip />
-                <Bar dataKey="count" fill="#667eea" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-
-          <div className="chart-card">
-            <h3>Serie Temporal de PIB</h3>
-            <ResponsiveContainer width="100%" height={400}>
-              <LineChart data={pibTimeSeries}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="fecha" angle={-45} textAnchor="end" height={100} />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                <Line type="monotone" dataKey="promedio" stroke="#667eea" strokeWidth={2} name="PIB Promedio" />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
         </div>
       )}
     </div>
@@ -531,4 +609,3 @@ const PIBDashboard = () => {
 };
 
 export default PIBDashboard;
-

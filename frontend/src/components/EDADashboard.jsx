@@ -43,6 +43,15 @@ const COLORS = [
   '#27ae60'   // Verde oscuro
 ];
 
+// Formateo numérico compacto para ejes
+const formatAxisNumber = (value) => {
+  if (value === null || value === undefined) return '';
+  const rounded = Math.round(value / 10) * 10; // terminar en 0
+  if (Math.abs(rounded) >= 1_000_000) return `${(rounded / 1_000_000).toFixed(1)}M`;
+  if (Math.abs(rounded) >= 1_000) return `${(rounded / 1_000).toFixed(0)}K`;
+  return rounded.toFixed(0);
+};
+
 const EDADashboard = () => {
   const [municipios, setMunicipios] = useState([]);
   const [selectedMunicipios, setSelectedMunicipios] = useState([]);
@@ -303,47 +312,52 @@ const EDADashboard = () => {
     return histogram;
   }, [pibData, activeTab]);
 
-  // Datos para histograma de Radianza (optimizado)
-  const radianzaHistogram = useMemo(() => {
-    if (!radianzaData || radianzaData.length === 0 || activeTab !== 'radianza') return [];
+  // Histograma de NTL (general, sin muestreo, como PIB)
+  const radianzaHistogramResult = useMemo(() => {
+    if (!radianzaData || radianzaData.length === 0 || activeTab !== 'radianza') return { data: [], min: 0, max: 0 };
     
-    // Usar un sample si hay muchos datos para mejorar rendimiento
-    const sampleSize = Math.min(radianzaData.length, 2000);
-    const sampledData = radianzaData.length > 2000 
-      ? radianzaData.filter((_, i) => i % Math.ceil(radianzaData.length / sampleSize) === 0)
-      : radianzaData;
-    
-    const radianzaValues = sampledData
+    const selected = selectedMunicipios.length > 0 ? selectedMunicipios : municipios;
+    if (!selected || selected.length === 0) return { data: [], min: 0, max: 0 };
+
+    const values = radianzaData
+      .filter(d => selected.includes((d.Municipio || d.municipio || '').toString()))
       .map(d => parseFloat(d.Media_de_radianza))
       .filter(v => !isNaN(v) && v > 0);
-    
-    if (radianzaValues.length === 0) return [];
-    
-    // Calcular min/max de forma más eficiente
+
+    if (values.length === 0) return { data: [], min: 0, max: 0 };
+
     let min = Infinity;
     let max = -Infinity;
-    for (let i = 0; i < radianzaValues.length; i++) {
-      const val = radianzaValues[i];
+    for (let i = 0; i < values.length; i++) {
+      const val = values[i];
       if (val < min) min = val;
       if (val > max) max = val;
     }
-    
-    const bins = 20;
-    const binWidth = (max - min) / bins;
-    
-    const histogram = Array(bins).fill(0).map((_, i) => ({
-      range: `${(min + i * binWidth).toFixed(0)} - ${(min + (i + 1) * binWidth).toFixed(0)}`,
-      count: 0,
-      mid: min + (i + 0.5) * binWidth
-    }));
-    
-    radianzaValues.forEach(val => {
-      const binIndex = Math.min(Math.floor((val - min) / binWidth), bins - 1);
+
+    const bins = 30; // alineado con PIB
+    const range = max - min;
+    const binWidth = range === 0 ? 1 : range / bins;
+
+    const histogram = Array(bins).fill(0).map((_, i) => {
+      const binMin = min + i * binWidth;
+      const binMax = min + (i + 1) * binWidth;
+      return {
+        bin: i + 1,
+        count: 0,
+        mid: binMin + binWidth / 2,
+        min: binMin,
+        max: binMax,
+        range: `${formatAxisNumber(binMin)} - ${formatAxisNumber(binMax)}`
+      };
+    });
+
+    values.forEach(val => {
+      const binIndex = range === 0 ? 0 : Math.min(Math.floor((val - min) / binWidth), bins - 1);
       histogram[binIndex].count++;
     });
-    
-    return histogram;
-  }, [radianzaData, activeTab]);
+
+    return { data: histogram, min, max };
+  }, [radianzaData, activeTab, selectedMunicipios, municipios]);
 
   // Datos para serie temporal de PIB (optimizado)
   const pibTimeSeries = useMemo(() => {
@@ -749,12 +763,34 @@ const EDADashboard = () => {
           <div className="chart-card">
             <h3>Distribución de NTL (Histograma)</h3>
             <ResponsiveContainer width="100%" height={400}>
-              <BarChart data={radianzaHistogram}>
+              <BarChart data={radianzaHistogramResult.data} barCategoryGap={0} margin={{ top: 10, right: 20, left: 10, bottom: 60 }}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="range" angle={-45} textAnchor="end" height={100} />
+                <XAxis 
+                  type="number"
+                  dataKey="mid"
+                  domain={[radianzaHistogramResult.min, radianzaHistogramResult.max]}
+                  tickFormatter={formatAxisNumber}
+                  tickCount={10}
+                  tick={{ fontSize: 12 }}
+                  height={60}
+                />
                 <YAxis />
-                <Tooltip />
-                <Bar dataKey="count" fill="#764ba2" />
+                <Tooltip 
+                  formatter={(value) => [value, 'Frecuencia']}
+                  labelFormatter={(_, payload) => {
+                    const p = payload && payload[0] && payload[0].payload;
+                    if (p) return `Rango: ${formatAxisNumber(p.min)} - ${formatAxisNumber(p.max)}`;
+                    return '';
+                  }}
+                />
+                <Bar
+                  dataKey="count"
+                  name="Frecuencia"
+                  fill="#764ba2"
+                  fillOpacity={0.35}
+                  stroke="#764ba2"
+                  strokeWidth={1}
+                />
               </BarChart>
             </ResponsiveContainer>
           </div>
