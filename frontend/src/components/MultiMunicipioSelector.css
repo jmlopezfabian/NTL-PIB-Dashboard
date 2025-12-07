@@ -1,7 +1,7 @@
 .multi-municipio-selector {
   background: #ffffff;
-  border-radius: 15px;
-  padding: 1.5rem;
+  border-radius: 10px;
+  padding: 0.75rem;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08), 0 4px 24px rgba(0, 0, 0, 0.04);
   border: 1px solid rgba(0, 0, 0, 0.06);
   transition: border-color 0.3s, box-shadow 0.3s;
@@ -15,10 +15,10 @@
 
 .multi-municipio-selector > label {
   display: block;
-  margin-bottom: 1rem;
+  margin-bottom: 0.5rem;
   color: #2a2a2a;
   font-weight: 500;
-  font-size: 1rem;
+  font-size: 0.85rem;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -30,10 +30,10 @@
 
 .dropdown-button {
   width: 100%;
-  padding: 0.75rem;
+  padding: 0.5rem;
   border: 2px solid rgba(0, 0, 0, 0.1);
   border-radius: 8px;
-  font-size: 1rem;
+  font-size: 0.85rem;
   background: #fafafa;
   color: #2a2a2a;
   cursor: pointer;
@@ -81,7 +81,7 @@
 }
 
 .dropdown-header {
-  padding: 0.75rem;
+  padding: 0.5rem;
   border-bottom: 1px solid rgba(0, 0, 0, 0.08);
 }
 

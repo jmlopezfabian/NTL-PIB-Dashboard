@@ -33,15 +33,16 @@ const RadianzaChart = ({
   data, 
   selectedMetrica = 'Media_de_radianza', 
   multipleMunicipios = false,
-  showMarkers = true
+  showMarkers = true,
+  loading = false
 }) => {
   // Obtener el nombre de la métrica para mostrar
   const getMetricaLabel = (key) => {
     const labels = {
-      'Media_de_radianza': 'Media de Radianza',
-      'Maximo_de_radianza': 'Máximo de Radianza',
-      'Minimo_de_radianza': 'Mínimo de Radianza',
-      'Suma_de_radianza': 'Suma de Radianza',
+      'Media_de_radianza': 'Media de NTL',
+      'Maximo_de_radianza': 'Máximo de NTL',
+      'Minimo_de_radianza': 'Mínimo de NTL',
+      'Suma_de_radianza': 'Suma de NTL',
       'Desviacion_estandar_de_radianza': 'Desviación Estándar',
       'Percentil_25_de_radianza': 'Percentil 25',
       'Percentil_50_de_radianza': 'Percentil 50 (Mediana)',
@@ -100,6 +101,10 @@ const RadianzaChart = ({
   }, [data, multipleMunicipios]);
 
   // Verificar datos después de los hooks
+  if (loading) {
+    return <div className="loading" style={{ padding: '2rem', textAlign: 'center' }}>Cargando datos...</div>;
+  }
+  
   if (!data || data.length === 0 || chartData.length === 0) {
     return <div className="no-data">No hay datos disponibles</div>;
   }
