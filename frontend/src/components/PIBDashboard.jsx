@@ -37,48 +37,8 @@ const PIBDashboard = () => {
   const [edaDataLoaded, setEdaDataLoaded] = useState(false);
   const [loadingMunicipioData, setLoadingMunicipioData] = useState(false);
 
-  useEffect(() => {
-    loadInitialData();
-  }, []);
-
   // Ref para el timeout de debounce
   const debounceTimerRef = useRef(null);
-
-  // Debounce para la carga de datos de municipios
-  useEffect(() => {
-    // Limpiar timer anterior
-    if (debounceTimerRef.current) {
-      clearTimeout(debounceTimerRef.current);
-    }
-
-    if (selectedMunicipios.length > 0) {
-      // Debounce de 300ms para evitar cargas excesivas
-      debounceTimerRef.current = setTimeout(() => {
-        loadMultipleMunicipioData(selectedMunicipios);
-      }, 300);
-    } else {
-      // Limpiar datos cuando no hay municipios seleccionados
-      setMunicipioData([]);
-    }
-
-    // Cleanup
-    return () => {
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
-      }
-    };
-  }, [selectedMunicipios, loadMultipleMunicipioData]);
-
-  // Cargar datos del EDA solo cuando se cambia a la pestaña EDA
-  useEffect(() => {
-    if (activeTab === 'eda' && municipios.length > 0) {
-      // Si cambian los municipios, recargar datos
-      if (edaDataLoaded) {
-        setEdaDataLoaded(false);
-      }
-      loadEdaData();
-    }
-  }, [activeTab, selectedMunicipios, loadEdaData, municipios.length, edaDataLoaded]);
 
   const loadInitialData = async () => {
     try {
@@ -158,24 +118,6 @@ const PIBDashboard = () => {
     }
   }, []);
 
-  // Filtrar datos según el rango de fechas seleccionado
-  const filteredMunicipioData = useMemo(() => {
-    if (!dateRange || !municipioData || municipioData.length === 0) {
-      return municipioData;
-    }
-
-    return municipioData.filter(item => {
-      const fecha = item.fecha || item.Fecha;
-      if (!fecha) return false;
-      
-      const itemDate = new Date(fecha);
-      const startDate = new Date(dateRange.startDate);
-      const endDate = new Date(dateRange.endDate);
-      
-      return itemDate >= startDate && itemDate <= endDate;
-    });
-  }, [municipioData, dateRange]);
-
   const loadEdaData = useCallback(async () => {
     try {
       // Limpiar datos primero
@@ -204,6 +146,64 @@ const PIBDashboard = () => {
       setEdaDataLoaded(true);
     }
   }, [selectedMunicipios]);
+
+  useEffect(() => {
+    loadInitialData();
+  }, []);
+
+  // Debounce para la carga de datos de municipios
+  useEffect(() => {
+    // Limpiar timer anterior
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+
+    if (selectedMunicipios.length > 0) {
+      // Debounce de 300ms para evitar cargas excesivas
+      debounceTimerRef.current = setTimeout(() => {
+        loadMultipleMunicipioData(selectedMunicipios);
+      }, 300);
+    } else {
+      // Limpiar datos cuando no hay municipios seleccionados
+      setMunicipioData([]);
+    }
+
+    // Cleanup
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, [selectedMunicipios, loadMultipleMunicipioData]);
+
+  // Cargar datos del EDA solo cuando se cambia a la pestaña EDA
+  useEffect(() => {
+    if (activeTab === 'eda' && municipios.length > 0) {
+      // Si cambian los municipios, recargar datos
+      if (edaDataLoaded) {
+        setEdaDataLoaded(false);
+      }
+      loadEdaData();
+    }
+  }, [activeTab, selectedMunicipios, loadEdaData, municipios.length, edaDataLoaded]);
+
+  // Filtrar datos según el rango de fechas seleccionado
+  const filteredMunicipioData = useMemo(() => {
+    if (!dateRange || !municipioData || municipioData.length === 0) {
+      return municipioData;
+    }
+
+    return municipioData.filter(item => {
+      const fecha = item.fecha || item.Fecha;
+      if (!fecha) return false;
+      
+      const itemDate = new Date(fecha);
+      const startDate = new Date(dateRange.startDate);
+      const endDate = new Date(dateRange.endDate);
+      
+      return itemDate >= startDate && itemDate <= endDate;
+    });
+  }, [municipioData, dateRange]);
 
   // Estadísticas descriptivas para PIB (EDA) - DEBE estar antes de returns tempranos
   const pibStats = useMemo(() => {
@@ -432,11 +432,6 @@ const PIBDashboard = () => {
         <div className="charts-grid">
         <div className="chart-card">
           <h2>PIB Municipal</h2>
-          {multipleMunicipios && (
-            <p className="chart-subtitle">
-              Municipios: {selectedMunicipios.join(', ')}
-            </p>
-          )}
           <RadianzaChart 
             data={filteredMunicipioData.map(item => ({
               Fecha: item.fecha || item.Fecha,

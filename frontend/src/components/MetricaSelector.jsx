@@ -2,10 +2,10 @@ import React from 'react';
 import './MetricaSelector.css';
 
 const METRICAS = [
-  { value: 'Media_de_radianza', label: 'Media de Radianza' },
-  { value: 'Maximo_de_radianza', label: 'Máximo de Radianza' },
-  { value: 'Minimo_de_radianza', label: 'Mínimo de Radianza' },
-  { value: 'Suma_de_radianza', label: 'Suma de Radianza' },
+  { value: 'Media_de_radianza', label: 'Media de NTL' },
+  { value: 'Maximo_de_radianza', label: 'Máximo de NTL' },
+  { value: 'Minimo_de_radianza', label: 'Mínimo de NTL' },
+  { value: 'Suma_de_radianza', label: 'Suma de NTL' },
   { value: 'Desviacion_estandar_de_radianza', label: 'Desviación Estándar' },
   { value: 'Percentil_25_de_radianza', label: 'Percentil 25' },
   { value: 'Percentil_50_de_radianza', label: 'Percentil 50 (Mediana)' },

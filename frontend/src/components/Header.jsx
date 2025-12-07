@@ -10,7 +10,7 @@ const Header = ({ currentPage, onPageChange }) => {
             <h1>
               {currentPage === 'pib' ? 'Dashboard de PIB' : 
                currentPage === 'comparison' ? 'Análisis Comparativo: PIB vs Radianza' : 
-               'Dashboard de Radianza'}
+               'Dashboard de NTL'}
             </h1>
             <p>
               {currentPage === 'pib' 
@@ -26,7 +26,7 @@ const Header = ({ currentPage, onPageChange }) => {
               onClick={() => onPageChange('radianza')}
               className={`nav-button ${currentPage === 'radianza' ? 'active' : ''}`}
             >
-              Radianza
+              NTL
             </button>
             <button
               onClick={() => onPageChange('pib')}

@@ -605,13 +605,13 @@ const EDADashboard = () => {
           className={`eda-tab ${activeTab === 'radianza' ? 'active' : ''}`}
           onClick={() => setActiveTab('radianza')}
         >
-          Análisis de Radianza
+          Análisis de NTL
         </button>
         <button
           className={`eda-tab ${activeTab === 'comparison' ? 'active' : ''}`}
           onClick={() => setActiveTab('comparison')}
         >
-          PIB vs Radianza
+          PIB vs NTL
         </button>
       </div>
 
@@ -698,7 +698,7 @@ const EDADashboard = () => {
       {activeTab === 'radianza' && (
         <div className="eda-content">
           <h2>
-            Análisis Exploratorio de Datos - Radianza
+            Análisis Exploratorio de Datos - NTL
             {selectedMunicipios.length > 0 && selectedMunicipios.length < municipios.length && (
               <span className="municipio-filter-indicator">
                 {' '}({selectedMunicipios.length} {selectedMunicipios.length === 1 ? 'municipio' : 'municipios'} seleccionado{selectedMunicipios.length === 1 ? '' : 's'})
@@ -747,7 +747,7 @@ const EDADashboard = () => {
           )}
 
           <div className="chart-card">
-            <h3>Distribución de Radianza (Histograma)</h3>
+            <h3>Distribución de NTL (Histograma)</h3>
             <ResponsiveContainer width="100%" height={400}>
               <BarChart data={radianzaHistogram}>
                 <CartesianGrid strokeDasharray="3 3" />
@@ -760,7 +760,7 @@ const EDADashboard = () => {
           </div>
 
           <div className="chart-card">
-            <h3>Serie Temporal de Radianza</h3>
+            <h3>Serie Temporal de NTL</h3>
             <ResponsiveContainer width="100%" height={400}>
               <LineChart data={radianzaTimeSeries}>
                 <CartesianGrid strokeDasharray="3 3" />
@@ -768,7 +768,7 @@ const EDADashboard = () => {
                 <YAxis />
                 <Tooltip />
                 <Legend />
-                <Line type="monotone" dataKey="promedio" stroke="#764ba2" strokeWidth={2} name="Radianza Promedio" />
+                <Line type="monotone" dataKey="promedio" stroke="#764ba2" strokeWidth={2} name="NTL Promedio" />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -786,7 +786,7 @@ const EDADashboard = () => {
           </div>
 
           <div className="chart-card">
-            <h3>Suma de Radianza por Año y Municipio</h3>
+            <h3>Suma de NTL por Año y Municipio</h3>
             <ResponsiveContainer width="100%" height={500}>
               <LineChart data={sumaRadianzaPorAnioMunicipio.chartData} margin={{ top: 20, right: 30, left: 80, bottom: 60 }}>
                 <CartesianGrid strokeDasharray="3 3" />
@@ -799,7 +799,13 @@ const EDADashboard = () => {
                   tick={{ fontSize: 12 }}
                 />
                 <YAxis 
-                  label={{ value: 'Suma de Radianza', angle: -90, position: 'insideLeft' }}
+                  label={{ 
+                    value: 'Suma de NTL', 
+                    angle: -90, 
+                    position: 'left',
+                    offset: 10,
+                    style: { textAnchor: 'middle', fill: '#2a2a2a' }
+                  }}
                   tick={{ fontSize: 12 }}
                   tickFormatter={(value) => {
                     if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
@@ -842,7 +848,7 @@ const EDADashboard = () => {
       {activeTab === 'comparison' && (
         <div className="eda-content">
           <h2>
-            Análisis Comparativo: PIB vs Radianza
+            Análisis Comparativo: PIB vs NTL
             {selectedMunicipios.length > 0 && selectedMunicipios.length < municipios.length && (
               <span className="municipio-filter-indicator">
                 {' '}({selectedMunicipios.length} {selectedMunicipios.length === 1 ? 'municipio' : 'municipios'} seleccionado{selectedMunicipios.length === 1 ? '' : 's'})
@@ -851,7 +857,7 @@ const EDADashboard = () => {
           </h2>
 
           <div className="chart-card">
-            <h3>Scatter Plot: Radianza vs PIB</h3>
+            <h3>Scatter Plot: NTL vs PIB</h3>
             <ResponsiveContainer width="100%" height={600}>
               <ScatterChart margin={{ top: 20, right: 20, bottom: 60, left: 80 }}>
                 <CartesianGrid strokeDasharray="3 3" />
@@ -864,8 +870,8 @@ const EDADashboard = () => {
                 <YAxis 
                   type="number" 
                   dataKey="radianza" 
-                  name="Radianza Media"
-                  label={{ value: 'Radianza Media', angle: -90, position: 'insideLeft' }}
+                  name="NTL Media"
+                  label={{ value: 'NTL Media', angle: -90, position: 'left', offset: 10, style: { textAnchor: 'middle', fill: '#2a2a2a' } }}
                 />
                 <Tooltip 
                   cursor={{ strokeDasharray: '3 3' }}
@@ -881,7 +887,7 @@ const EDADashboard = () => {
                         }}>
                           <p style={{ margin: 0, fontWeight: 'bold' }}>{data.municipio || 'Municipio'}</p>
                           <p style={{ margin: '5px 0 0 0' }}>PIB: {data.pib?.toFixed(2) || 'N/A'}</p>
-                          <p style={{ margin: '5px 0 0 0' }}>Radianza: {data.radianza?.toFixed(2) || 'N/A'}</p>
+                          <p style={{ margin: '5px 0 0 0' }}>NTL: {data.radianza?.toFixed(2) || 'N/A'}</p>
                         </div>
                       );
                     }

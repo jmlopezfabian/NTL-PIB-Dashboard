@@ -372,7 +372,6 @@ const Dashboard = () => {
     const range = max - min;
     const rawStep = range / (numTicks - 1);
     
-    // Calcular un paso "bonito" (redondeado)
     const magnitude = Math.pow(10, Math.floor(Math.log10(rawStep)));
     const normalizedStep = rawStep / magnitude;
     
@@ -730,7 +729,7 @@ const Dashboard = () => {
       {activeTab === 'eda' && (
         <div className="eda-content">
           <h2>
-            Análisis Exploratorio de Datos - Radianza
+            Análisis Exploratorio de Datos - NTL
             {selectedMunicipios.length > 0 && selectedMunicipios.length < municipios.length && (
               <span className="municipio-filter-indicator">
                 {' '}({selectedMunicipios.length} {selectedMunicipios.length === 1 ? 'municipio' : 'municipios'} seleccionado{selectedMunicipios.length === 1 ? '' : 's'})
@@ -789,16 +788,16 @@ const Dashboard = () => {
           </div>
 
           <div className="chart-card">
-            <h3>Media vs Desviación estándar de Radianza por Municipio</h3>
+            <h3>Media vs Desviación estándar de NTL por Municipio</h3>
             <ResponsiveContainer width="100%" height={500}>
               <ScatterChart margin={{ top: 20, right: 30, bottom: 80, left: 100 }}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis 
                   type="number"
                   dataKey="media"
-                  name="Media de Radianza"
+                  name="Media de NTL"
                   label={{ 
-                    value: 'Media de Radianza (Brillo Promedio)', 
+                    value: 'Media de NTL', 
                     position: 'insideBottom', 
                     offset: -5,
                     style: { textAnchor: 'middle' }
@@ -814,11 +813,11 @@ const Dashboard = () => {
                   dataKey="desvStd"
                   name="Desviación Estándar"
                   label={{ 
-                    value: 'Desviación Estándar (Variabilidad Espacial)', 
+                    value: 'Desviación Estándar de NTL', 
                     angle: -90, 
-                    position: 'insideLeft',
+                    position: 'left',
                     offset: 10,
-                    style: { textAnchor: 'middle' }
+                    style: { textAnchor: 'middle', fill: '#2a2a2a' }
                   }}
                   tick={{ fontSize: 12 }}
                   tickFormatter={(value) => Math.round(value).toString()}
@@ -903,7 +902,7 @@ const Dashboard = () => {
           </div>
 
           <div className="chart-card">
-            <h3>Suma de Radianza por Año y Municipio</h3>
+            <h3>Suma de NTL por Año y Municipio</h3>
             <ResponsiveContainer width="100%" height={500}>
               <LineChart data={sumaRadianzaPorAnioMunicipio.chartData} margin={{ top: 20, right: 30, left: 80, bottom: 60 }}>
                 <CartesianGrid strokeDasharray="3 3" />
@@ -916,7 +915,13 @@ const Dashboard = () => {
                   tick={{ fontSize: 12 }}
                 />
                 <YAxis 
-                  label={{ value: 'Suma de Radianza', angle: -90, position: 'insideLeft' }}
+                  label={{ 
+                    value: 'Suma de NTL', 
+                    angle: -90, 
+                    position: 'left',
+                    offset: 10,
+                    style: { textAnchor: 'middle', fill: '#2a2a2a' }
+                  }}
                   tick={{ fontSize: 12 }}
                   tickFormatter={(value) => {
                     if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
