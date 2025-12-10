@@ -25,6 +25,7 @@ WORKDIR /app
 COPY requirements.txt .
 COPY app.py .
 COPY config.py .
+COPY Data ./Data
 
 # Copiar los archivos construidos del frontend
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
