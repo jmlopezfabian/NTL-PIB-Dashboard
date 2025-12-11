@@ -518,8 +518,8 @@ const PIBDashboard = () => {
           
           <div className="chart-card">
             <h3>Distribución de PIB (Histograma)</h3>
-            <ResponsiveContainer width="100%" height={400}>
-              <BarChart data={pibHistogramResult.data} barCategoryGap={0} margin={{ top: 10, right: 20, left: 10, bottom: 60 }}>
+            <ResponsiveContainer width="100%" height={360}>
+              <BarChart data={pibHistogramResult.data} barCategoryGap={0} margin={{ top: 10, right: 20, left: 50, bottom: 40 }}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis 
                   type="number"
@@ -528,9 +528,10 @@ const PIBDashboard = () => {
                   tickFormatter={formatAxisNumber}
                   tickCount={10}
                   tick={{ fontSize: 12 }}
-                  height={60}
+                  height={40}
+                  label={{ value: 'PIB Municipal', position: 'insideBottom', offset: -5 }}
                 />
-                <YAxis />
+                <YAxis width={55} label={{ value: 'Frecuencia', angle: -90, position: 'insideLeft', offset: 0, style: { textAnchor: 'middle' } }} />
                 <Tooltip 
                   formatter={(value, name) => [value, name]}
                   labelFormatter={(_, payload) => {

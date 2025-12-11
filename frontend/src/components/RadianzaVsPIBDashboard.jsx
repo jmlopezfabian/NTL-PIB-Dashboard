@@ -186,6 +186,13 @@ const RadianzaVsPIBDashboard = () => {
   const municipiosInData = useMemo(() => {
     return Object.keys(scatterDataByMunicipio).sort();
   }, [scatterDataByMunicipio]);
+  // Mostrar solo los primeros 4 municipios en el scatter para evitar saturación
+  const limitedMunicipios = useMemo(() => municipiosInData.slice(0, 4), [municipiosInData]);
+  // Separar leyenda de la gráfica para evitar solapamiento
+  const legendItems = useMemo(
+    () => limitedMunicipios.map((m, idx) => ({ label: m, color: COLORS[idx % COLORS.length] })),
+    [limitedMunicipios]
+  );
 
   if (loading && !dataLoaded) {
     return (
@@ -231,6 +238,14 @@ const RadianzaVsPIBDashboard = () => {
 
         <div className="chart-card">
           <h3>Scatter Plot: NTL vs PIB</h3>
+          <div className="chart-inline-legend">
+            {legendItems.map(item => (
+              <div key={item.label} className="legend-item">
+                <span className="legend-dot" style={{ backgroundColor: item.color }} />
+                <span className="legend-label">{item.label}</span>
+              </div>
+            ))}
+          </div>
           <ResponsiveContainer width="100%" height={600}>
             <ScatterChart margin={{ top: 20, right: 20, bottom: 60, left: 80 }}>
               <CartesianGrid strokeDasharray="3 3" />
@@ -238,7 +253,7 @@ const RadianzaVsPIBDashboard = () => {
                 type="number" 
                 dataKey="pib" 
                 name="PIB Municipal"
-                label={{ value: 'PIB Municipal', position: 'insideBottom', offset: -5 }}
+                label={{ value: 'PIB Municipal', position: 'insideBottom', offset: -15 }}
               />
               <YAxis 
                 type="number" 
@@ -278,8 +293,8 @@ const RadianzaVsPIBDashboard = () => {
                   return null;
                 }}
               />
-              <Legend />
-              {municipiosInData.map((municipio, index) => {
+              {/* Legend removida dentro del chart; usamos leyenda externa */}
+              {limitedMunicipios.map((municipio, index) => {
                 const color = COLORS[index % COLORS.length];
                 const data = scatterDataByMunicipio[municipio] || [];
                 return (
