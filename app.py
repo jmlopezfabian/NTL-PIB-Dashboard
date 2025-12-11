@@ -599,13 +599,21 @@ def download_data():
         df = df.replace([float('inf'), float('-inf')], '')
         df = df.fillna('')
         
+        # Renombrar columnas para que no aparezca "radianza" en la descarga
+        rename_map = {}
+        for col in df.columns:
+            if 'radianza' in col:
+                rename_map[col] = col.replace('radianza', 'NTL')
+        if rename_map:
+            df = df.rename(columns=rename_map)
+        
         # Convertir DataFrame a CSV
         output = StringIO()
         df.to_csv(output, index=False, encoding='utf-8-sig')  # utf-8-sig para Excel
         output.seek(0)
         
         # Generar nombre de archivo
-        filename = 'datos_radianza'
+        filename = 'datos_ntl'
         if municipios:
             filename += f"_{len(municipios)}_municipios"
         elif municipio:

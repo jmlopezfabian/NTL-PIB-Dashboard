@@ -125,18 +125,50 @@ const RadianzaVsPIBDashboard = () => {
     }
   };
 
-  // Datos para scatter plot PIB vs Radianza agrupados por municipio
+  // Datos para scatter plot PIB vs NTL agrupados por municipio y agregados por trimestre
   const scatterDataByMunicipio = useMemo(() => {
     if (!combinedData || combinedData.length === 0) return {};
     
     // Filtrar y procesar datos usando la métrica seleccionada
-    const validData = combinedData
+    const rawData = combinedData
       .map(d => ({
         pib: parseFloat(d.pib_mun),
         radianza: parseFloat(d[selectedMetrica]),
         municipio: (d.municipio || d.Municipio || '').toString().trim()
+        ,
+        fecha: d.fecha || d.Fecha || d.fecha_radianza || d.fecha_pib || null
       }))
       .filter(d => !isNaN(d.pib) && !isNaN(d.radianza) && d.pib > 0 && d.radianza > 0 && d.municipio);
+    
+    // Agregar por trimestre para alinear con periodicidad de PIB
+    const getQuarterKey = (fecha) => {
+      if (!fecha) return null;
+      const dateObj = new Date(fecha);
+      if (isNaN(dateObj.getTime())) return null;
+      const year = dateObj.getFullYear();
+      const quarter = Math.floor(dateObj.getMonth() / 3) + 1;
+      return `${year}-Q${quarter}`;
+    };
+
+    const aggregatedMap = {};
+    rawData.forEach(d => {
+      const quarterKey = getQuarterKey(d.fecha);
+      if (!quarterKey) return;
+      const key = `${d.municipio}|${quarterKey}`;
+      if (!aggregatedMap[key]) {
+        aggregatedMap[key] = { sumPib: 0, sumRad: 0, count: 0, municipio: d.municipio, quarter: quarterKey };
+      }
+      aggregatedMap[key].sumPib += d.pib;
+      aggregatedMap[key].sumRad += d.radianza;
+      aggregatedMap[key].count += 1;
+    });
+
+    const validData = Object.values(aggregatedMap).map(item => ({
+      municipio: item.municipio,
+      quarter: item.quarter,
+      pib: item.sumPib / item.count,
+      radianza: item.sumRad / item.count
+    }));
     
     // Agrupar por municipio
     const grouped = {};
@@ -144,7 +176,7 @@ const RadianzaVsPIBDashboard = () => {
       if (!grouped[d.municipio]) {
         grouped[d.municipio] = [];
       }
-      grouped[d.municipio].push({ pib: d.pib, radianza: d.radianza });
+      grouped[d.municipio].push({ pib: d.pib, radianza: d.radianza, quarter: d.quarter });
     });
     
     return grouped;
@@ -189,7 +221,7 @@ const RadianzaVsPIBDashboard = () => {
 
       <div className="eda-content">
         <h2>
-          Análisis Comparativo: PIB vs Radianza
+          Análisis Comparativo: PIB vs NTL
           {selectedMunicipios.length > 0 && selectedMunicipios.length < municipios.length && (
             <span className="municipio-filter-indicator">
               {' '}({selectedMunicipios.length} {selectedMunicipios.length === 1 ? 'municipio' : 'municipios'} seleccionado{selectedMunicipios.length === 1 ? '' : 's'})
@@ -198,7 +230,7 @@ const RadianzaVsPIBDashboard = () => {
         </h2>
 
         <div className="chart-card">
-          <h3>Scatter Plot: Radianza vs PIB</h3>
+          <h3>Scatter Plot: NTL vs PIB</h3>
           <ResponsiveContainer width="100%" height={600}>
             <ScatterChart margin={{ top: 20, right: 20, bottom: 60, left: 80 }}>
               <CartesianGrid strokeDasharray="3 3" />
@@ -233,6 +265,9 @@ const RadianzaVsPIBDashboard = () => {
                         padding: '10px'
                       }}>
                         <p style={{ margin: 0, fontWeight: 'bold' }}>{data.municipio || 'Municipio'}</p>
+                        {data.quarter && (
+                          <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#555' }}>{data.quarter}</p>
+                        )}
                         <p style={{ margin: '5px 0 0 0' }}>PIB: {data.pib?.toFixed(2) || 'N/A'}</p>
                         <p style={{ margin: '5px 0 0 0' }}>
                           {METRICAS.find(m => m.value === selectedMetrica)?.label || selectedMetrica}: {data.radianza?.toFixed(2) || 'N/A'}

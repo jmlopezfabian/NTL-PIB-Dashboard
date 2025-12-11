@@ -100,6 +100,20 @@ const RadianzaChart = ({
     return unique;
   }, [data, multipleMunicipios]);
 
+  // Items para mostrar leyenda fuera del gráfico
+  const legendItems = useMemo(() => {
+    if (multipleMunicipios && municipios.length > 0) {
+      return municipios.map((municipio, index) => ({
+        label: municipio,
+        color: COLORS[index % COLORS.length]
+      }));
+    }
+    return [{
+      label: getMetricaLabel(selectedMetrica),
+      color: '#667eea'
+    }];
+  }, [multipleMunicipios, municipios, selectedMetrica]);
+
   // Verificar datos después de los hooks
   if (loading) {
     return <div className="loading" style={{ padding: '2rem', textAlign: 'center' }}>Cargando datos...</div>;
@@ -110,8 +124,17 @@ const RadianzaChart = ({
   }
 
   return (
+    <div style={{ width: '100%' }}>
+      <div className="chart-inline-legend">
+        {legendItems.map(item => (
+          <div key={item.label} className="legend-item">
+            <span className="legend-dot" style={{ backgroundColor: item.color }} />
+            <span className="legend-label">{item.label}</span>
+          </div>
+        ))}
+      </div>
     <ResponsiveContainer width="100%" height={400}>
-      <LineChart data={chartData} margin={{ top: 5, right: 30, left: 60, bottom: 5 }}>
+        <LineChart data={chartData} margin={{ top: 5, right: 30, left: 60, bottom: 30 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
         <XAxis 
           dataKey="fecha" 
@@ -121,6 +144,7 @@ const RadianzaChart = ({
           interval="preserveStartEnd"
           stroke="#666"
           tick={{ fill: '#666', fontSize: 12 }}
+            label={{ value: 'Fecha', position: 'insideBottom', offset: -10, style: { fill: '#444' } }}
         />
         <YAxis 
           label={{ 
@@ -144,9 +168,6 @@ const RadianzaChart = ({
             boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)'
           }}
           labelStyle={{ color: '#2a2a2a' }}
-        />
-        <Legend 
-          wrapperStyle={{ color: '#2a2a2a' }}
         />
         {multipleMunicipios && municipios.length > 0 ? (
           municipios.map((municipio, index) => (
@@ -176,6 +197,7 @@ const RadianzaChart = ({
         )}
       </LineChart>
     </ResponsiveContainer>
+    </div>
   );
 };
 

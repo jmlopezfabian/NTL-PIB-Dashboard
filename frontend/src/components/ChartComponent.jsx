@@ -67,6 +67,12 @@ function ChartComponent({ apiUrl }) {
       }
     },
     scales: {
+      x: {
+        title: {
+          display: true,
+          text: 'Fecha'
+        }
+      },
       y: {
         beginAtZero: true,
         ticks: {

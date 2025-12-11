@@ -3,6 +3,7 @@ import './MultiMunicipioSelector.css';
 
 const MultiMunicipioSelector = ({ municipios, selectedMunicipios, onSelectMunicipios }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [pendingMunicipios, setPendingMunicipios] = useState(selectedMunicipios || []);
   const dropdownRef = useRef(null);
 
   useEffect(() => {
@@ -18,22 +19,38 @@ const MultiMunicipioSelector = ({ municipios, selectedMunicipios, onSelectMunici
     };
   }, []);
 
+  useEffect(() => {
+    setPendingMunicipios(selectedMunicipios || []);
+  }, [selectedMunicipios]);
+
   const handleToggle = (municipio, e) => {
     e.stopPropagation();
-    if (selectedMunicipios.includes(municipio)) {
-      onSelectMunicipios(selectedMunicipios.filter(m => m !== municipio));
+    if (pendingMunicipios.includes(municipio)) {
+      setPendingMunicipios(pendingMunicipios.filter(m => m !== municipio));
     } else {
-      onSelectMunicipios([...selectedMunicipios, municipio]);
+      setPendingMunicipios([...pendingMunicipios, municipio]);
     }
   };
 
   const handleSelectAll = (e) => {
     e.stopPropagation();
-    if (selectedMunicipios.length === municipios.length) {
-      onSelectMunicipios([]);
+    if (pendingMunicipios.length === municipios.length) {
+      setPendingMunicipios([]);
     } else {
-      onSelectMunicipios([...municipios]);
+      setPendingMunicipios([...municipios]);
     }
+  };
+
+  const handleApply = (e) => {
+    e.stopPropagation();
+    onSelectMunicipios(pendingMunicipios);
+    setIsOpen(false);
+  };
+
+  const handleCancel = (e) => {
+    e.stopPropagation();
+    setPendingMunicipios(selectedMunicipios || []);
+    setIsOpen(false);
   };
 
   const getDisplayText = () => {
@@ -67,7 +84,7 @@ const MultiMunicipioSelector = ({ municipios, selectedMunicipios, onSelectMunici
               <label className="select-all-checkbox">
                 <input
                   type="checkbox"
-                  checked={selectedMunicipios.length === municipios.length}
+                  checked={pendingMunicipios.length === municipios.length}
                   onChange={handleSelectAll}
                 />
                 <span>Seleccionar todos</span>
@@ -78,12 +95,20 @@ const MultiMunicipioSelector = ({ municipios, selectedMunicipios, onSelectMunici
                 <label key={municipio} className="dropdown-option">
                   <input
                     type="checkbox"
-                    checked={selectedMunicipios.includes(municipio)}
+                    checked={pendingMunicipios.includes(municipio)}
                     onChange={(e) => handleToggle(municipio, e)}
                   />
                   <span>{municipio}</span>
                 </label>
               ))}
+            </div>
+            <div className="dropdown-footer">
+              <button type="button" className="cancel-btn" onClick={handleCancel}>
+                Cancelar
+              </button>
+              <button type="button" className="apply-btn" onClick={handleApply}>
+                Aplicar selección
+              </button>
             </div>
           </div>
         )}

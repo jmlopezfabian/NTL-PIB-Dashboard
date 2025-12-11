@@ -12,7 +12,9 @@ const BoxPlot = ({ data, yAxisLabel, height = 500 }) => {
   // Calcular dimensiones - estilo horizontal profesional
   const margin = { top: 50, right: 60, bottom: 70, left: 150 };
   const chartHeight = Math.max(height, data.length * 55);
-  const chartWidth = 1100;
+  // Ajustar ancho según viewport para evitar corte en móviles
+  const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1100;
+  const chartWidth = Math.max(650, Math.min(1100, viewportWidth - 32));
   const plotWidth = chartWidth - margin.left - margin.right;
   const plotHeight = chartHeight - margin.top - margin.bottom;
   
@@ -116,7 +118,7 @@ const BoxPlot = ({ data, yAxisLabel, height = 500 }) => {
   };
 
   return (
-    <div style={{ position: 'relative', width: '100%' }}>
+    <div style={{ position: 'relative', width: '100%', overflowX: 'auto' }}>
       <ResponsiveContainer width="100%" height={chartHeight}>
         <svg width={chartWidth} height={chartHeight} style={{ overflow: 'visible' }}>
           {/* Grid lines verticales sutiles */}

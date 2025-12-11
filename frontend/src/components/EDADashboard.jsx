@@ -695,13 +695,24 @@ const EDADashboard = () => {
 
           <div className="chart-card">
             <h3>Serie Temporal de PIB</h3>
+            <div className="chart-inline-legend">
+              <div className="legend-item">
+                <span className="legend-dot" style={{ backgroundColor: '#667eea' }} />
+                <span className="legend-label">PIB Promedio</span>
+              </div>
+            </div>
             <ResponsiveContainer width="100%" height={400}>
               <LineChart data={pibTimeSeries}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="fecha" angle={-45} textAnchor="end" height={100} />
+                <XAxis 
+                  dataKey="fecha" 
+                  angle={-45} 
+                  textAnchor="end" 
+                  height={100} 
+                  label={{ value: 'Fecha', position: 'insideBottom', offset: -5, style: { fill: '#444' } }} 
+                />
                 <YAxis />
                 <Tooltip />
-                <Legend />
                 <Line type="monotone" dataKey="promedio" stroke="#667eea" strokeWidth={2} name="PIB Promedio" />
               </LineChart>
             </ResponsiveContainer>
@@ -797,13 +808,24 @@ const EDADashboard = () => {
 
           <div className="chart-card">
             <h3>Serie Temporal de NTL</h3>
+            <div className="chart-inline-legend">
+              <div className="legend-item">
+                <span className="legend-dot" style={{ backgroundColor: '#764ba2' }} />
+                <span className="legend-label">NTL Promedio</span>
+              </div>
+            </div>
             <ResponsiveContainer width="100%" height={400}>
               <LineChart data={radianzaTimeSeries}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="fecha" angle={-45} textAnchor="end" height={100} />
+                <XAxis 
+                  dataKey="fecha" 
+                  angle={-45} 
+                  textAnchor="end" 
+                  height={100} 
+                  label={{ value: 'Fecha', position: 'insideBottom', offset: -5, style: { fill: '#444' } }} 
+                />
                 <YAxis />
                 <Tooltip />
-                <Legend />
                 <Line type="monotone" dataKey="promedio" stroke="#764ba2" strokeWidth={2} name="NTL Promedio" />
               </LineChart>
             </ResponsiveContainer>

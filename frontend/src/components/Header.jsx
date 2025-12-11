@@ -8,16 +8,16 @@ const Header = ({ currentPage, onPageChange }) => {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
           <div>
             <h1>
-              {currentPage === 'pib' ? 'Dashboard de PIB' : 
-               currentPage === 'comparison' ? 'Análisis Comparativo: PIB vs Radianza' : 
-               'Dashboard de NTL'}
+              {currentPage === 'pib' ? 'Visualización de PIB' : 
+               currentPage === 'comparison' ? 'Análisis Comparativo: PIB vs NTL' : 
+               'Visualización de NTL'}
             </h1>
             <p>
               {currentPage === 'pib' 
                 ? 'Visualización de PIB para municipios de la CDMX, más datos de Monterrey y Oaxaca de Juárez'
                 : currentPage === 'comparison'
-                ? 'Análisis comparativo de la relación entre PIB y Radianza'
-                : 'Visualización de datos de radianza para municipios de la CDMX, más datos de Monterrey y Oaxaca de Juárez'
+                ? 'Análisis comparativo de la relación entre PIB y NTL'
+                : 'Visualización de datos de NTL para municipios de la CDMX, más datos de Monterrey y Oaxaca de Juárez'
               }
             </p>
           </div>
@@ -38,7 +38,7 @@ const Header = ({ currentPage, onPageChange }) => {
               onClick={() => onPageChange('comparison')}
               className={`nav-button ${currentPage === 'comparison' ? 'active' : ''}`}
             >
-              PIB vs Radianza
+              PIB vs NTL
             </button>
           </nav>
         </div>

@@ -112,6 +112,47 @@
   padding: 0.5rem;
 }
 
+.dropdown-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  background: #fafafa;
+}
+
+.apply-btn, .cancel-btn {
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 0.45rem 0.9rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.apply-btn {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: #fff;
+  border-color: rgba(102, 126, 234, 0.35);
+  box-shadow: 0 8px 18px rgba(102, 126, 234, 0.25);
+}
+
+.apply-btn:hover {
+  box-shadow: 0 10px 22px rgba(102, 126, 234, 0.3);
+  transform: translateY(-1px);
+}
+
+.cancel-btn {
+  background: #ffffff;
+  color: #2a2a2a;
+  border-color: rgba(0, 0, 0, 0.12);
+}
+
+.cancel-btn:hover {
+  border-color: rgba(0, 0, 0, 0.2);
+  background: #f3f4f6;
+}
+
 .dropdown-option {
   display: flex;
   align-items: center;

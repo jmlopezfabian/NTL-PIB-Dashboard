@@ -561,6 +561,12 @@ const Dashboard = () => {
         });
       }
       
+      // Incluir columnas solicitadas: siempre Fecha y Municipio + métricas seleccionadas
+      const baseCols = ['Fecha', 'Municipio'];
+      const metricCols = selectedMetricas && selectedMetricas.length > 0 ? selectedMetricas : ['Media_de_radianza'];
+      const columnsParam = [...baseCols, ...metricCols].join(',');
+      params.append('columns', columnsParam);
+      
       // Agregar año si está seleccionado
       if (selectedYear) {
         params.append('year', selectedYear);
@@ -589,7 +595,7 @@ const Dashboard = () => {
       
       // Obtener nombre de archivo del header Content-Disposition o usar uno por defecto
       const contentDisposition = response.headers['content-disposition'];
-      let filename = 'datos_radianza.csv';
+      let filename = 'datos_ntl.csv';
       if (contentDisposition) {
         // Extraer el nombre del archivo del header Content-Disposition
         // Maneja tanto filename="archivo.csv" como filename=archivo.csv
@@ -706,11 +712,6 @@ const Dashboard = () => {
             return (
               <div key={metrica} className="chart-card">
                 <h2>{metricaLabel}</h2>
-                {multipleMunicipios && (
-                  <p className="chart-subtitle">
-                    Municipios: {selectedMunicipios.join(', ')}
-                  </p>
-                )}
                 <RadianzaChart 
                   data={filteredMunicipioData} 
                   selectedMetrica={metrica}
@@ -725,11 +726,6 @@ const Dashboard = () => {
           // Sin facetas: un solo gráfico con la métrica seleccionada
           <div className="chart-card">
             <h2>{METRICAS.find(m => m.value === selectedMetricas[0])?.label || selectedMetricas[0]}</h2>
-            {multipleMunicipios && (
-              <p className="chart-subtitle">
-                Municipios: {selectedMunicipios.join(', ')}
-              </p>
-            )}
             <RadianzaChart 
               data={filteredMunicipioData} 
               selectedMetrica={selectedMetricas[0] || 'Media_de_radianza'}
@@ -886,13 +882,13 @@ const Dashboard = () => {
                         />
                         {/* Etiqueta a la derecha del punto (ha="right" en Python) */}
                         <text 
-                          x={cx + 8} 
-                          y={cy + 4} 
+                          x={cx + 10} 
+                          y={cy + 6} 
                           textAnchor="start" 
-                          fontSize="9" 
-                          fill="#2a2a2a" 
-                          fontWeight="400"
-                          style={{ pointerEvents: 'none' }}
+                          fontSize="12" 
+                          fill="#0b1529" 
+                          fontWeight="700"
+                          style={{ pointerEvents: 'none', paintOrder: 'stroke', stroke: 'white', strokeWidth: 3 }}
                         >
                           {payload.municipio}
                         </text>
