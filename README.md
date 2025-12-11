@@ -1,193 +1,63 @@
-# Web App Full-Stack con Flask + React
+# Dashboard de NTL y PIB (Flask + React)
 
-Una aplicación web full-stack creada con Flask (backend) y React (frontend) para practicar despliegue en Railway.
+Aplicación interactiva para explorar NTL (radianza nocturna) y PIB municipal: series temporales, histogramas, boxplots, comparativos PIB vs NTL, filtros por municipio, rango de fechas y año, y descarga de datos filtrados. Backend en Flask, frontend en React/Vite con Recharts.
 
-## 🚀 Características
+## ✨ Qué hace
+- **NTL**: métricas de radianza (media, percentiles, etc.), filtros por municipios/fechas/año, series temporales, histogramas, boxplots y comparación entre municipios.
+- **PIB**: métricas de PIB municipal, histogramas, boxplots y series temporales.
+- **Comparativo PIB vs NTL**: scatter plot (PIB vs NTL) con selección de municipios y métrica de NTL.
+- **Descarga de datos**: CSV con columnas seleccionadas (usa “NTL” en lugar de “radianza”).
+- **Responsive**: ajustes específicos para móvil (leyendas externas, scroll horizontal en gráficos anchos).
 
-- **Backend**: Flask API REST con CORS habilitado
-- **Frontend**: React con Vite + Chart.js
-- **Interfaz**: Moderna y responsive
-- **Gráficas**: Interactivas con datos en tiempo real
-- **Despliegue**: Lista para Railway
-
-## 📋 Requisitos
-
-- Python 3.8+
-- Node.js 16+ y npm
-- pip
-
-## 📁 Estructura del Proyecto
-
+## 🗂️ Estructura
 ```
 .
-├── app.py              # Backend Flask (API REST)
-├── requirements.txt    # Dependencias Python
-├── Procfile           # Configuración para Railway
-├── railway.json       # Configuración avanzada de Railway
-├── frontend/          # Frontend React
-│   ├── src/
-│   │   ├── components/    # Componentes React
-│   │   ├── App.jsx        # Componente principal
-│   │   └── App.css        # Estilos
-│   ├── package.json
-│   └── vite.config.js     # Configuración Vite
-├── run.sh             # Script para ejecutar solo backend
-└── README.md          # Este archivo
+├── app.py            # API Flask: datos NTL/PIB, filtros, descarga
+├── config.py
+├── Data/             # CSV locales (ej. municipios_completos_limpio.csv, PIB_completo.csv)
+├── frontend/         # React + Vite + Recharts
+│   └── src/components
+├── Dockerfile        # Build multi-stage (frontend + backend)
+└── start.sh
 ```
 
-## 🛠️ Instalación y Ejecución Local
-
-### Opción 1: Ejecutar Backend y Frontend Juntos (Recomendado)
-
+## 🚀 Ejecutar en local
+1) Backend
 ```bash
-# Instalar todas las dependencias (primera vez)
-npm run install-all
-
-# Ejecutar backend (puerto 5000) y frontend (puerto 3000) simultáneamente
-npm run dev
-```
-
-Luego abre: `http://localhost:3000`
-
-### Opción 2: Ejecutar por Separado
-
-#### Backend (Terminal 1):
-```bash
-# Activar entorno virtual
-source venv/bin/activate
-
-# Instalar dependencias (si no lo has hecho)
 pip install -r requirements.txt
-
-# Ejecutar backend
-python app.py
+python app.py   # http://localhost:5000
 ```
-Backend estará en: `http://localhost:5000`
-
-#### Frontend (Terminal 2):
+2) Frontend
 ```bash
 cd frontend
-
-# Instalar dependencias (si no lo has hecho)
 npm install
-
-# Ejecutar frontend
-npm run dev
+npm run dev     # http://localhost:5173 (o el puerto que muestre Vite)
 ```
-Frontend estará en: `http://localhost:3000`
+Para modo combinado (build + serve estático desde Flask), usa el `Dockerfile`.
 
-### Opción 3: Solo Backend (con HTML antiguo)
+## 🔌 Endpoints principales
+- `GET /api/data`             Datos NTL (filtros: municipios, rango de fechas, año, columnas)
+- `GET /api/pib/data`         Datos PIB
+- `GET /api/eda/combined`     Datos combinados PIB+NTL para el scatter
+- `GET /api/download`         Descarga CSV NTL (con columnas elegidas)
+- `GET /api/pib/download`     Descarga CSV PIB
+- `GET /api/municipios`, `/api/years`, `/api/pib/municipios` Metadatos
 
+## 🧰 Notas técnicas
+- Cache en memoria para NTL y PIB.
+- Fallback a CSV local (`Data/`) si falla Azure Blob o no hay credenciales.
+- Deduplicación y agregación trimestral en el scatter PIB vs NTL para evitar saturación.
+- Leyendas externas en charts multiserie y scroll horizontal en boxplots en móvil.
+
+## 🛠️ Configuración rápida (Docker/Railway)
+Build multi-stage ya listo:
 ```bash
-./run.sh
+docker build -t ntl-pib .
+docker run -p 5000:5000 ntl-pib
 ```
-Esto ejecuta solo el backend. Nota: El backend ya no sirve HTML, solo APIs.
+Railway usa el `Dockerfile`; el puerto se toma de `$PORT`.
 
-## 🔌 Endpoints de la API
-
-- `GET /api/info` - Información del sistema (JSON)
-- `GET /api/health` - Estado de salud del servidor (JSON)
-- `GET /api/chart-data` - Datos para la gráfica (JSON)
-
-## 🚂 Despliegue en Railway
-
-### Opción A: Desplegar Backend y Frontend Separados (Recomendado)
-
-#### 1. Desplegar Todo Junto (Backend + Frontend):
-
-El proyecto está configurado con un `Dockerfile` multi-stage que:
-1. Construye el frontend React
-2. Construye el backend Python
-3. Sirve ambos desde el mismo servidor Flask
-
-1. Crea un nuevo proyecto en Railway
-2. Conecta tu repositorio
-3. Railway usará automáticamente el `Dockerfile` para construir todo
-4. El puerto se configura automáticamente mediante la variable `PORT`
-5. Tu aplicación completa estará disponible en: `https://tu-app.railway.app`
-
-**Nota**: El frontend y backend se sirven desde el mismo dominio, por lo que no necesitas configurar CORS ni variables de entorno adicionales.
-
-#### 2. Frontend en Railway (Opcional):
-
-1. Crea otro proyecto en Railway
-2. Conecta el mismo repositorio pero configura:
-   - **Root Directory**: `frontend`
-   - **Build Command**: `npm install && npm run build`
-   - **Start Command**: `npx serve -s dist`
-   - Instala `serve` primero: `npm install -g serve` o usa `npx serve`
-3. Configura variable de entorno:
-   - `VITE_API_URL`: URL de tu backend (ej: `https://tu-backend.railway.app/api`)
-
-### Opción B: Desplegar Solo Backend (Frontend local o Vercel)
-
-Puedes desplegar solo el backend en Railway y el frontend en otra plataforma como Vercel o Netlify.
-
-1. Construye el frontend:
-```bash
-cd frontend
-npm run build
-```
-
-2. Despliega el build en Vercel/Netlify
-3. Configura `VITE_API_URL` apuntando a tu backend en Railway
-
-### Configuración del Backend
-
-El proyecto incluye:
-- `Dockerfile`: Construcción del backend Python
-- `.dockerignore`: Excluye frontend y archivos innecesarios
-- `railway.json`: Configuración de Railway para usar Dockerfile
-- `Procfile`: Comando alternativo de inicio (si no usas Dockerfile)
-
-## 🔧 Configuración de Desarrollo
-
-### Variables de Entorno
-
-**Backend**: No requiere variables de entorno para desarrollo local.
-
-**Frontend**: Crea `frontend/.env.local`:
-```
-VITE_API_URL=http://localhost:5000/api
-```
-
-O usa el proxy configurado en `vite.config.js` (ya configurado por defecto).
-
-## 📝 Notas
-
-- El backend usa Flask-CORS para permitir peticiones desde el frontend
-- En desarrollo, Vite hace proxy automático de `/api` al backend
-- El frontend está configurado para comunicarse con el backend mediante axios
-- Para producción, asegúrate de configurar `VITE_API_URL` con la URL correcta
-
-## 🎨 Personalización
-
-### Backend:
-- Modifica `app.py` para agregar nuevos endpoints
-- Los datos actuales son de ejemplo (random), conéctate a una BD real
-
-### Frontend:
-- Modifica componentes en `frontend/src/components/`
-- Estilos en `frontend/src/App.css`
-- Agrega más gráficas o funcionalidades
-
-## 🐛 Solución de Problemas
-
-**Error de CORS**: Asegúrate de que Flask-CORS está instalado y configurado en `app.py`
-
-**Frontend no conecta con backend**: 
-- Verifica que el backend esté corriendo en puerto 5000
-- Revisa la consola del navegador para ver errores
-- Verifica `VITE_API_URL` en desarrollo
-
-**Gráfica no se muestra**:
-- Verifica que Chart.js esté instalado: `npm install chart.js react-chartjs-2`
-- Revisa la consola del navegador
-
-## 📚 Tecnologías Utilizadas
-
-- **Backend**: Flask, Flask-CORS, Gunicorn
-- **Frontend**: React, Vite, Chart.js, Axios
-- **Despliegue**: Railway
-
-¡Buena suerte con tu despliegue! 🚀
+## 📚 Tecnologías
+- Backend: Flask, Flask-CORS, Gunicorn, Azure Blob SDK (opcional)
+- Frontend: React, Vite, Recharts, Axios
+- Dev/Build: Docker multi-stage, npm
