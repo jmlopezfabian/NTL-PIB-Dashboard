@@ -480,7 +480,7 @@ const PIBDashboard = () => {
               onClick={handleDownloadData}
               title="Descargar datos filtrados como CSV"
             >
-              ⬇ Descargar Datos
+              Descargar Datos
             </button>
           </div>
         )}
